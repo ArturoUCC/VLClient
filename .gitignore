@@ -1,0 +1,21 @@
+# Dependencias
+node_modules/
+**/node_modules/
+
+# Variables privadas
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# Expo
+.expo/
+dist/
+web-build/
+
+# Archivos temporales
+*.log
+.DS_Store
+Thumbs.db
