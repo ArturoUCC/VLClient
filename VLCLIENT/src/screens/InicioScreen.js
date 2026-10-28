@@ -237,7 +237,7 @@ export default function InicioScreen({ navigation, route }) {
         <View style={styles.accesos}>
           <TouchableOpacity
             style={styles.accesoCard}
-            onPress={() => mostrarProximamente('Mis pagos')}
+            onPress={() => navigation.navigate('Pagos', { token })}
           >
             <Ionicons name="card-outline" size={27} color="#23558C" />
             <Text style={styles.accesoText}>Mis pagos</Text>

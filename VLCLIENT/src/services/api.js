@@ -43,3 +43,41 @@ export const obtenerMiEstadoCuenta = async (token) => {
 
   return data;
 };
+
+export const obtenerMiPerfil = async (token) => {
+  const response = await fetch(`${API_URL}/perfil/mi-perfil`, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.mensaje || 'No se pudo consultar el perfil');
+  }
+
+  return data;
+};
+
+
+export const obtenerMisPagos = async (token) => {
+  const response = await fetch(`${API_URL}/pagos/mis-pagos`, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(
+      data.mensaje || 'No se pudo consultar el historial de pagos'
+    );
+  }
+
+  return data.pagos || [];
+};
+
