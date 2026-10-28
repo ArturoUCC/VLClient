@@ -11,6 +11,7 @@ const inquilinosRoutes = require('./routes/inquilinosRoutes');
 const estadosCuentaRoutes = require('./routes/estadosCuentaRoutes');
 const authRoutes = require('./routes/authRoutes');
 const perfilRoutes = require('./routes/perfilRoutes');
+const pagosRoutes = require('./routes/pagosRoutes');
 
 // Middlewares
 app.use(helmet());
@@ -20,6 +21,7 @@ app.use(express.json());
 app.use('/api/estados-de-cuenta', estadosCuentaRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/perfil', perfilRoutes);
+app.use('/api/pagos', pagosRoutes);
 
 // Ruta para comprobar que funciona la API
 app.get('/api', (req, res) => {
