@@ -1,4 +1,4 @@
-const API_URL = 'http://10.200.27.156:3000/api';
+const API_URL = "https://vlclient-backend.onrender.com/api";
 
 // Iniciar sesión
 export const loginInquilino = async (correo, password) => {

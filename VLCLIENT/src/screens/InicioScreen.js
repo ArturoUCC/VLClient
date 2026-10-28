@@ -1,5 +1,4 @@
-
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,28 +6,122 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { obtenerMiEstadoCuenta } from '../services/api';
 
-export default function InicioScreen({ navigation }) {
+export default function InicioScreen({ navigation, route }) {
 
-  // Datos temporales para el prototipo del Sprint 1
-  const inquilino = {
-    nombre: 'Carlos Mendoza',
-    cuota: 8500,
-    vencimiento: '30 de octubre de 2026',
-    estado: 'Pendiente',
+  // Datos recibidos después del login
+  const { token, inquilino } = route.params || {};
+
+  const [estadoCuenta, setEstadoCuenta] = useState(null);
+  const [cargando, setCargando] = useState(true);
+  const [actualizando, setActualizando] = useState(false);
+  const [error, setError] = useState('');
+
+  const cargarEstadoCuenta = useCallback(async () => {
+    if (!token) {
+      setError('No se encontró una sesión válida. Inicia sesión nuevamente.');
+      setCargando(false);
+      return;
+    }
+
+    try {
+      setError('');
+      const datos = await obtenerMiEstadoCuenta(token);
+      setEstadoCuenta(datos);
+    } catch (err) {
+      setError(err.message || 'No se pudo consultar el estado de cuenta.');
+    } finally {
+      setCargando(false);
+      setActualizando(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    cargarEstadoCuenta();
+  }, [cargarEstadoCuenta]);
+
+  const actualizar = () => {
+    setActualizando(true);
+    cargarEstadoCuenta();
   };
 
   const formatoMoneda = (cantidad) => {
-    return '$' + cantidad.toLocaleString('es-MX');
+    const numero = Number(cantidad);
+
+    if (!Number.isFinite(numero)) {
+      return 'No disponible';
+    }
+
+    return numero.toLocaleString('es-MX', {
+      style: 'currency',
+      currency: 'MXN',
+    });
   };
+
+  const formatoFecha = (fecha) => {
+    if (!fecha) return 'No disponible';
+
+    const fechaTexto = String(fecha);
+    const fechaSoloDia = fechaTexto.slice(0, 10);
+    const partes = fechaSoloDia.split('-');
+
+    if (partes.length !== 3) return fechaTexto;
+
+    const [anio, mes, dia] = partes.map(Number);
+
+    if (!anio || !mes || !dia) return fechaTexto;
+
+    const fechaLocal = new Date(anio, mes - 1, dia);
+
+    return fechaLocal.toLocaleDateString('es-MX', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    });
+  };
+
+  const nombreCompleto = estadoCuenta
+    ? `${estadoCuenta.nombre || ''} ${estadoCuenta.apellido || ''}`.trim()
+    : `${inquilino?.nombre || ''} ${inquilino?.apellido || ''}`.trim();
+
+  const nombreMostrar = nombreCompleto || 'Inquilino';
+
+  const iniciales = nombreMostrar
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((parte) => parte.charAt(0).toUpperCase())
+    .join('');
+
+  const estadoPago = estadoCuenta?.estado || 'Sin información';
 
   const mostrarProximamente = (modulo) => {
     Alert.alert(
       modulo,
       'Este módulo se implementará en los siguientes sprints.'
+    );
+  };
+
+  const mostrarDetalle = () => {
+    if (!estadoCuenta) return;
+
+    Alert.alert(
+      'Detalle del estado de cuenta',
+      `Propiedad: ${estadoCuenta.propiedad || 'No disponible'}\n\n` +
+      `Mes: ${formatoFecha(estadoCuenta.mes)}\n\n` +
+      `Renta: ${formatoMoneda(estadoCuenta.renta_base)}\n` +
+      `Servicios: ${formatoMoneda(estadoCuenta.servicios)}\n` +
+      `Cargos adicionales: ${formatoMoneda(estadoCuenta.cargos_adicionales)}\n\n` +
+      `Total: ${formatoMoneda(estadoCuenta.total)}\n` +
+      `Fecha límite: ${formatoFecha(estadoCuenta.fecha_limite)}\n` +
+      `Estado: ${estadoPago}`,
+      [{ text: 'Cerrar' }]
     );
   };
 
@@ -38,50 +131,104 @@ export default function InicioScreen({ navigation }) {
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={actualizando}
+            onRefresh={actualizar}
+            tintColor="#23558C"
+            colors={['#23558C']}
+          />
+        }
       >
 
         {/* ENCABEZADO */}
         <View style={styles.header}>
-          <View>
+          <View style={styles.headerInfo}>
             <Text style={styles.saludo}>Bienvenido,</Text>
-            <Text style={styles.nombre}>{inquilino.nombre}</Text>
+            <Text style={styles.nombre}>{nombreMostrar}</Text>
           </View>
 
           <TouchableOpacity
             style={styles.avatar}
-            onPress={() => navigation.navigate('Perfil')}
+            onPress={() => navigation.navigate('Perfil', { inquilino, token })}
           >
-            <Text style={styles.avatarText}>CM</Text>
+            <Text style={styles.avatarText}>
+              {iniciales}
+            </Text>
           </TouchableOpacity>
         </View>
 
-        {/* TARJETA DE CUOTA */}
+        {/* TARJETA DE CUOTA REAL */}
         <View style={styles.cuotaCard}>
-          <Text style={styles.cuotaLabel}>Tu cuota de este mes</Text>
 
-          <Text style={styles.cuotaMonto}>
-            {formatoMoneda(inquilino.cuota)}
+          <Text style={styles.cuotaLabel}>
+            Tu último estado de cuenta
           </Text>
 
-          <Text style={styles.cuotaFecha}>
-            Pagar antes del {inquilino.vencimiento}
-          </Text>
-
-          <View style={styles.cuotaFooter}>
-            <View style={styles.estadoBadge}>
-              <Text style={styles.estadoText}>
-                {inquilino.estado}
+          {cargando ? (
+            <View style={styles.cargandoContainer}>
+              <ActivityIndicator size="large" color="#FFFFFF" />
+              <Text style={styles.cargandoTexto}>
+                Consultando tu estado de cuenta...
               </Text>
             </View>
-
-            <TouchableOpacity
-              onPress={() => mostrarProximamente('Estado de cuenta')}
-            >
-              <Text style={styles.verDetalle}>
-                Ver detalle →
+          ) : estadoCuenta ? (
+            <>
+              <Text style={styles.cuotaMonto}>
+                {formatoMoneda(estadoCuenta.total)}
               </Text>
-            </TouchableOpacity>
-          </View>
+
+              <Text style={styles.cuotaFecha}>
+                Fecha límite: {formatoFecha(estadoCuenta.fecha_limite)}
+              </Text>
+
+              <Text style={styles.cuotaFecha}>
+                Propiedad: {estadoCuenta.propiedad || 'No disponible'}
+              </Text>
+
+              <View style={styles.cuotaFooter}>
+                <View
+                  style={[
+                    styles.estadoBadge,
+                    estadoPago.toLowerCase() === 'pagado' &&
+                      styles.estadoPagado,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.estadoText,
+                      estadoPago.toLowerCase() === 'pagado' &&
+                        styles.estadoPagadoTexto,
+                    ]}
+                  >
+                    {estadoPago}
+                  </Text>
+                </View>
+
+                <TouchableOpacity onPress={mostrarDetalle}>
+                  <Text style={styles.verDetalle}>
+                    Ver detalle →
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          ) : (
+            <Text style={styles.cargandoTexto}>
+              No hay información disponible.
+            </Text>
+          )}
+
+          {!!error && (
+            <View style={styles.errorContainer}>
+              <Text style={styles.errorTexto}>{error}</Text>
+              <TouchableOpacity onPress={actualizar}>
+                <Text style={styles.reintentar}>
+                  Reintentar consulta
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
         </View>
 
         {/* ACCESOS RÁPIDOS */}
@@ -106,15 +253,15 @@ export default function InicioScreen({ navigation }) {
 
           <TouchableOpacity
             style={styles.accesoCard}
-            onPress={() => navigation.navigate('Perfil')}
+            onPress={() => navigation.navigate('Perfil', { inquilino, token })}
           >
             <Ionicons name="person-outline" size={27} color="#23558C" />
             <Text style={styles.accesoText}>Perfil</Text>
           </TouchableOpacity>
         </View>
 
-        {/* REPORTES RECIENTES */}
-        <Text style={styles.sectionTitle}>Últimos reportes</Text>
+        {/* REPORTES DE EJEMPLO */}
+        <Text style={styles.sectionTitle}>Reportes de ejemplo</Text>
 
         <View style={styles.reporteCard}>
           <View style={styles.reporteIcon}>
@@ -168,7 +315,7 @@ export default function InicioScreen({ navigation }) {
 
         <TouchableOpacity
           style={styles.navItem}
-          onPress={() => navigation.navigate('Perfil')}
+          onPress={() => navigation.navigate('Perfil', { inquilino, token })}
         >
           <Ionicons name="person-outline" size={23} color="#94A3B8" />
           <Text style={styles.navText}>Perfil</Text>
@@ -194,6 +341,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 20,
     marginBottom: 25,
+  },
+  headerInfo: {
+    flex: 1,
+    marginRight: 12,
   },
   saludo: {
     fontSize: 13,
@@ -237,6 +388,7 @@ const styles = StyleSheet.create({
   cuotaFecha: {
     color: '#DCEBFA',
     fontSize: 12,
+    marginTop: 5,
   },
   cuotaFooter: {
     flexDirection: 'row',
@@ -255,10 +407,38 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: 'bold',
   },
+  estadoPagado: {
+    backgroundColor: '#BBF7D0',
+  },
+  estadoPagadoTexto: {
+    color: '#166534',
+  },
   verDetalle: {
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '600',
+  },
+  cargandoContainer: {
+    paddingVertical: 22,
+    alignItems: 'center',
+  },
+  cargandoTexto: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    marginTop: 12,
+  },
+  errorContainer: {
+    marginTop: 14,
+  },
+  errorTexto: {
+    color: '#FEE2E2',
+    fontSize: 12,
+  },
+  reintentar: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+    marginTop: 10,
+    textDecorationLine: 'underline',
   },
   sectionTitle: {
     fontSize: 17,
