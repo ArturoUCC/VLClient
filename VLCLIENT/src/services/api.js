@@ -1,5 +1,8 @@
 const API_URL = "https://vlclient-backend.onrender.com/api";
 
+import { File } from 'expo-file-system';
+import { fetch as expoFetch } from 'expo/fetch';
+
 // Iniciar sesión
 export const loginInquilino = async (correo, password) => {
   const response = await fetch(`${API_URL}/auth/login`, {
@@ -124,25 +127,37 @@ export const crearReporte = async (token, reporte) => {
 };
 
 
+
 export const subirFotosReporte = async (
   token,
   idReporte,
   fotografias
 ) => {
+  if (!token) {
+    throw new Error('No se encontró una sesión válida.');
+  }
+
+  if (!idReporte) {
+    throw new Error('No se encontró el identificador del reporte.');
+  }
+
+  if (
+    !Array.isArray(fotografias) ||
+    fotografias.length === 0 ||
+    fotografias.length > 5
+  ) {
+    throw new Error('Selecciona entre 1 y 5 fotografías.');
+  }
+
   const formData = new FormData();
 
-  fotografias.forEach((foto, indice) => {
-    const nombre = foto.fileName || `foto_${indice + 1}.jpg`;
-    const tipo = foto.mimeType || 'image/jpeg';
-
-    formData.append('fotos', {
-      uri: foto.uri,
-      name: nombre,
-      type: tipo,
-    });
+  // Convertir las fotografías al formato compatible con Expo 58
+  fotografias.forEach((foto) => {
+    const archivo = new File(foto.uri);
+    formData.append('fotos', archivo);
   });
 
-  const response = await fetch(
+  const response = await expoFetch(
     `${API_URL}/reporte-fotos/${idReporte}`,
     {
       method: 'POST',
@@ -157,12 +172,13 @@ export const subirFotosReporte = async (
 
   if (!response.ok) {
     throw new Error(
-      data.mensaje || 'Error al subir fotografías'
+      data.mensaje || 'No se pudieron subir las fotografías.'
     );
   }
 
   return data;
 };
+
 
 export const obtenerFotosReporte = async (token, idReporte) => {
   const response = await fetch(
