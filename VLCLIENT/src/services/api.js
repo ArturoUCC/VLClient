@@ -200,3 +200,45 @@ export const obtenerFotosReporte = async (token, idReporte) => {
 
   return data.fotos || [];
 };
+
+
+export const obtenerMisCitas = async (token) => {
+  const response = await fetch(`${API_URL}/citas/mis-citas`, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(
+      data.mensaje || 'No se pudieron consultar las citas'
+    );
+  }
+
+  return data.citas || [];
+};
+
+export const crearCita = async (token, cita) => {
+  const response = await fetch(`${API_URL}/citas/crear`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(cita),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(
+      data.mensaje || 'No se pudo registrar la cita'
+    );
+  }
+
+  return data;
+};
+

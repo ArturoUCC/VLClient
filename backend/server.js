@@ -14,6 +14,7 @@ const perfilRoutes = require('./routes/perfilRoutes');
 const pagosRoutes = require('./routes/pagosRoutes');
 const reportesRoutes = require('./routes/reportesRoutes');
 const reporteFotosRoutes = require('./routes/reporteFotosRoutes');
+const citasRoutes = require('./routes/citasRoutes');
 
 // Middlewares
 app.use(helmet());
@@ -26,6 +27,7 @@ app.use('/api/perfil', perfilRoutes);
 app.use('/api/pagos', pagosRoutes);
 app.use('/api/reportes', reportesRoutes);
 app.use('/api/reporte-fotos', reporteFotosRoutes);
+app.use('/api/citas', citasRoutes);
 
 // Ruta para comprobar que funciona la API
 app.get('/api', (req, res) => {
@@ -60,4 +62,6 @@ app.get('/api/db-test', async (req, res) => {
     });
   }
 });
+
+
 
