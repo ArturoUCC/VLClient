@@ -122,3 +122,65 @@ export const crearReporte = async (token, reporte) => {
 
   return data;
 };
+
+
+export const subirFotosReporte = async (
+  token,
+  idReporte,
+  fotografias
+) => {
+  const formData = new FormData();
+
+  fotografias.forEach((foto, indice) => {
+    const nombre = foto.fileName || `foto_${indice + 1}.jpg`;
+    const tipo = foto.mimeType || 'image/jpeg';
+
+    formData.append('fotos', {
+      uri: foto.uri,
+      name: nombre,
+      type: tipo,
+    });
+  });
+
+  const response = await fetch(
+    `${API_URL}/reporte-fotos/${idReporte}`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: formData,
+    }
+  );
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(
+      data.mensaje || 'Error al subir fotografías'
+    );
+  }
+
+  return data;
+};
+
+export const obtenerFotosReporte = async (token, idReporte) => {
+  const response = await fetch(
+    `${API_URL}/reporte-fotos/${idReporte}`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(
+      data.mensaje || 'Error al consultar fotografías'
+    );
+  }
+
+  return data.fotos || [];
+};

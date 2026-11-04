@@ -1,7 +1,9 @@
+
 import React, { useState } from 'react';
 import {
   View,
   Text,
+  Image,
   ScrollView,
   TextInput,
   TouchableOpacity,
@@ -11,9 +13,15 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { crearReporte } from '../services/api';
+import * as ImagePicker from 'expo-image-picker';
+import {
+  crearReporte,
+  subirFotosReporte,
+} from '../services/api';
+
 
 const CATEGORIAS = [
   { valor: 'plomeria', nombre: 'Plomería', icono: 'water-outline' },
@@ -31,208 +39,405 @@ export default function NuevoReporteScreen({ navigation, route }) {
   const [descripcion, setDescripcion] = useState('');
   const [categoria, setCategoria] = useState('');
   const [enviando, setEnviando] = useState(false);
+  const [fotografias, setFotografias] = useState([]);
 
-  const enviarReporte = async () => {
-    if (enviando) return;
+  
+const seleccionarFotografias = async () => {
+  const espaciosDisponibles = 5 - fotografias.length;
 
-    if (!titulo.trim()) {
-      Alert.alert('Campo obligatorio', 'Escribe el título del reporte.');
-      return;
+  if (espaciosDisponibles <= 0) {
+    Alert.alert(
+      'Límite alcanzado',
+      'Solo puedes adjuntar hasta 5 fotografías.'
+    );
+    return;
+  }
+
+  const resultado = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ['images'],
+    allowsMultipleSelection: true,
+    selectionLimit: espaciosDisponibles,
+    quality: 0.7,
+  });
+
+  if (!resultado.canceled) {
+    setFotografias((anteriores) => [
+      ...anteriores,
+      ...resultado.assets.slice(0, 5 - anteriores.length),
+    ]);
+  }
+};
+
+const tomarFotografia = async () => {
+  if (fotografias.length >= 5) {
+    Alert.alert('Límite alcanzado', 'Solo puedes adjuntar 5 fotografías.');
+    return;
+  }
+
+  const permiso = await ImagePicker.requestCameraPermissionsAsync();
+
+  if (!permiso.granted) {
+    Alert.alert(
+      'Permiso necesario',
+      'Debes permitir el acceso a la cámara.'
+    );
+    return;
+  }
+
+  const resultado = await ImagePicker.launchCameraAsync({
+    mediaTypes: ['images'],
+    quality: 0.7,
+    allowsEditing: false,
+  });
+
+  if (!resultado.canceled) {
+    setFotografias((anteriores) => [
+      ...anteriores,
+      resultado.assets[0],
+    ].slice(0, 5));
+  }
+};
+
+const quitarFotografia = (indice) => {
+  setFotografias((anteriores) =>
+    anteriores.filter((_, i) => i !== indice)
+  );
+};
+
+
+  
+const enviarReporte = async () => {
+  if (enviando) return;
+
+  // Validaciones
+  if (!titulo.trim()) {
+    Alert.alert('Campo obligatorio', 'Escribe el título del reporte.');
+    return;
+  }
+
+  if (!descripcion.trim()) {
+    Alert.alert('Campo obligatorio', 'Describe el desperfecto.');
+    return;
+  }
+
+  if (!categoria) {
+    Alert.alert('Campo obligatorio', 'Selecciona una categoría.');
+    return;
+  }
+
+  if (titulo.trim().length > 150 || descripcion.trim().length > 2000) {
+    Alert.alert(
+      'Texto demasiado largo',
+      'Revisa la longitud del título y la descripción.'
+    );
+    return;
+  }
+
+  if (!token) {
+    Alert.alert('Sesión inválida', 'Inicia sesión nuevamente.');
+    return;
+  }
+
+  if (fotografias.length > 5) {
+    Alert.alert('Límite excedido', 'Solo puedes adjuntar 5 fotografías.');
+    return;
+  }
+
+  setEnviando(true);
+
+  let reporteCreado = null;
+
+  try {
+    // PASO 1: Guardar el reporte en Neon
+    const resultado = await crearReporte(token, {
+      titulo: titulo.trim(),
+      descripcion: descripcion.trim(),
+      categoria,
+    });
+
+    reporteCreado = resultado.reporte;
+
+    if (!reporteCreado?.id_reporte) {
+      throw new Error('No se recibió el identificador del reporte.');
     }
 
-    if (!descripcion.trim()) {
-      Alert.alert('Campo obligatorio', 'Describe el desperfecto.');
-      return;
+    // PASO 2: Subir fotografías a Cloudinary y Neon
+    if (fotografias.length > 0) {
+      await subirFotosReporte(
+        token,
+        reporteCreado.id_reporte,
+        fotografias
+      );
     }
 
-    if (!categoria) {
-      Alert.alert('Campo obligatorio', 'Selecciona una categoría.');
-      return;
-    }
+    // PASO 3: Confirmar que todo se guardó
+    Alert.alert(
+      'Reporte registrado',
+      fotografias.length > 0
+        ? `El reporte #${reporteCreado.id_reporte} y sus ${fotografias.length} fotografía(s) se guardaron correctamente.`
+        : `El reporte #${reporteCreado.id_reporte} se guardó correctamente.`,
+      [
+        {
+          text: 'Aceptar',
+          onPress: () => navigation.goBack(),
+        },
+      ]
+    );
 
-    if (titulo.trim().length > 150) {
-      Alert.alert('Título demasiado largo', 'El máximo es de 150 caracteres.');
-      return;
-    }
-
-    if (descripcion.trim().length > 2000) {
-      Alert.alert('Descripción demasiado larga', 'El máximo es de 2000 caracteres.');
-      return;
-    }
-
-    if (!token) {
-      Alert.alert('Sesión inválida', 'Vuelve a iniciar sesión.');
-      return;
-    }
-
-    setEnviando(true);
-
-    try {
-      const resultado = await crearReporte(token, {
-        titulo: titulo.trim(),
-        descripcion: descripcion.trim(),
-        categoria,
-      });
-
+  } catch (error) {
+    if (reporteCreado?.id_reporte) {
+      // El reporte ya existe, aunque las fotografías fallen
       Alert.alert(
-        'Reporte registrado',
-        `Tu reporte #${resultado.reporte.id_reporte} se registró correctamente.`,
+        'Reporte guardado, fotografías pendientes',
+        `Se creó el reporte #${reporteCreado.id_reporte}, pero no se pudieron confirmar sus fotografías.\n\n${error.message}\n\nNo vuelvas a enviar el mismo reporte porque se duplicaría.`,
         [
           {
-            text: 'Aceptar',
+            text: 'Entendido',
             onPress: () => navigation.goBack(),
           },
         ]
       );
-    } catch (error) {
+    } else {
       Alert.alert(
         'Error al registrar',
-        error.message || 'No fue posible guardar el reporte.'
+        error.message || 'No se pudo guardar el reporte.'
       );
-    } finally {
-      setEnviando(false);
     }
-  };
+  } finally {
+    setEnviando(false);
+  }
+};
+
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    <KeyboardAvoidingView
+      style={styles.flex}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <ScrollView
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
-        <ScrollView
-          contentContainerStyle={styles.content}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.header}>
-            <Ionicons
-              name="construct-outline"
-              size={35}
-              color="#23558C"
-            />
-            <Text style={styles.title}>Nuevo reporte</Text>
-            <Text style={styles.subtitle}>
-              Describe el problema que presenta tu vivienda.
-            </Text>
-          </View>
+        {/* ENCABEZADO */}
+        <View style={styles.header}>
+          <Ionicons
+            name="construct-outline"
+            size={35}
+            color="#23558C"
+          />
 
-          <View style={styles.card}>
-            <Text style={styles.label}>Título del reporte *</Text>
+          <Text style={styles.title}>Nuevo reporte</Text>
 
-            <TextInput
-              style={styles.input}
-              placeholder="Ej. Fuga de agua en la cocina"
-              placeholderTextColor="#94A3B8"
-              value={titulo}
-              onChangeText={setTitulo}
-              maxLength={150}
-              editable={!enviando}
-            />
+          <Text style={styles.subtitle}>
+            Describe el problema que presenta tu vivienda.
+          </Text>
+        </View>
 
-            <Text style={styles.contador}>{titulo.length}/150</Text>
+        {/* INFORMACIÓN DEL REPORTE */}
+        <View style={styles.card}>
+          <Text style={styles.label}>Título del reporte *</Text>
 
-            <Text style={styles.label}>Categoría *</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Ej. Fuga de agua en la cocina"
+            placeholderTextColor="#94A3B8"
+            value={titulo}
+            onChangeText={setTitulo}
+            maxLength={150}
+            editable={!enviando}
+          />
 
-            <View style={styles.categorias}>
-              {CATEGORIAS.map((item) => {
-                const seleccionada = categoria === item.valor;
+          <Text style={styles.contador}>
+            {titulo.length}/150
+          </Text>
 
-                return (
-                  <TouchableOpacity
-                    key={item.valor}
+          {/* CATEGORÍA */}
+          <Text style={styles.label}>Categoría *</Text>
+
+          <View style={styles.categorias}>
+            {CATEGORIAS.map((item) => {
+              const seleccionada = categoria === item.valor;
+
+              return (
+                <TouchableOpacity
+                  key={item.valor}
+                  style={[
+                    styles.categoriaButton,
+                    seleccionada && styles.categoriaSeleccionada,
+                  ]}
+                  onPress={() => setCategoria(item.valor)}
+                  disabled={enviando}
+                >
+                  <Ionicons
+                    name={item.icono}
+                    size={21}
+                    color={seleccionada ? '#FFFFFF' : '#23558C'}
+                  />
+
+                  <Text
                     style={[
-                      styles.categoriaButton,
-                      seleccionada && styles.categoriaSeleccionada,
+                      styles.categoriaText,
+                      seleccionada && styles.categoriaTextSeleccionada,
                     ]}
-                    onPress={() => setCategoria(item.valor)}
-                    disabled={enviando}
                   >
-                    <Ionicons
-                      name={item.icono}
-                      size={21}
-                      color={seleccionada ? '#FFFFFF' : '#23558C'}
-                    />
-
-                    <Text
-                      style={[
-                        styles.categoriaText,
-                        seleccionada && styles.categoriaTextSeleccionada,
-                      ]}
-                    >
-                      {item.nombre}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            <Text style={styles.label}>Descripción del problema *</Text>
-
-            <TextInput
-              style={[styles.input, styles.textArea]}
-              placeholder="Explica dónde está el desperfecto, desde cuándo ocurre y qué sucede..."
-              placeholderTextColor="#94A3B8"
-              value={descripcion}
-              onChangeText={setDescripcion}
-              multiline
-              textAlignVertical="top"
-              maxLength={2000}
-              editable={!enviando}
-            />
-
-            <Text style={styles.contador}>
-              {descripcion.length}/2000
-            </Text>
+                    {item.nombre}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
 
-          <View style={styles.infoCard}>
-            <Ionicons
-              name="information-circle-outline"
-              size={22}
-              color="#23558C"
-            />
+          {/* DESCRIPCIÓN */}
+          <Text style={styles.label}>
+            Descripción del problema *
+          </Text>
 
-            <Text style={styles.infoText}>
-              El reporte se asociará a tu contrato activo.
-              Su estado inicial será Pendiente y su prioridad será Media.
-            </Text>
+          <TextInput
+            style={[styles.input, styles.textArea]}
+            placeholder="Explica dónde está el desperfecto, desde cuándo ocurre y qué sucede..."
+            placeholderTextColor="#94A3B8"
+            value={descripcion}
+            onChangeText={setDescripcion}
+            multiline
+            textAlignVertical="top"
+            maxLength={2000}
+            editable={!enviando}
+          />
+
+          <Text style={styles.contador}>
+            {descripcion.length}/2000
+          </Text>
+        </View>
+
+        {/* FOTOGRAFÍAS DEL DESPERFECTO */}
+        <View style={styles.fotosCard}>
+          <Text style={styles.fotosTitulo}>
+            Fotografías del desperfecto
+          </Text>
+
+          <Text style={styles.fotosSubtitulo}>
+            Adjunta hasta 5 fotografías ({fotografias.length}/5)
+          </Text>
+
+          {/* BOTONES GALERÍA Y CÁMARA */}
+          <View style={styles.fotosBotones}>
+            <TouchableOpacity
+              style={styles.fotoBoton}
+              onPress={seleccionarFotografias}
+              disabled={enviando || fotografias.length >= 5}
+            >
+              <Ionicons
+                name="images-outline"
+                size={24}
+                color="#23558C"
+              />
+
+              <Text style={styles.fotoBotonTexto}>
+                Galería
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.fotoBoton}
+              onPress={tomarFotografia}
+              disabled={enviando || fotografias.length >= 5}
+            >
+              <Ionicons
+                name="camera-outline"
+                size={24}
+                color="#23558C"
+              />
+
+              <Text style={styles.fotoBotonTexto}>
+                Cámara
+              </Text>
+            </TouchableOpacity>
           </View>
 
-          <TouchableOpacity
-            style={[
-              styles.submitButton,
-              enviando && styles.submitDisabled,
-            ]}
-            onPress={enviarReporte}
-            disabled={enviando}
-          >
-            {enviando ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <>
-                <Ionicons
-                  name="send-outline"
-                  size={20}
-                  color="#FFFFFF"
+          {/* VISTA PREVIA DE LAS FOTOGRAFÍAS */}
+          <View style={styles.fotosPreview}>
+            {fotografias.map((foto, indice) => (
+              <View
+                key={`${foto.uri}-${indice}`}
+                style={styles.fotoContenedor}
+              >
+                <Image
+                  source={{ uri: foto.uri }}
+                  style={styles.fotoImagen}
                 />
-                <Text style={styles.submitText}>
-                  Enviar reporte
-                </Text>
-              </>
-            )}
-          </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.cancelButton}
-            onPress={() => navigation.goBack()}
-            disabled={enviando}
-          >
-            <Text style={styles.cancelText}>Cancelar</Text>
-          </TouchableOpacity>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+                {/* ELIMINAR FOTOGRAFÍA */}
+                <TouchableOpacity
+                  style={styles.quitarFoto}
+                  onPress={() => quitarFotografia(indice)}
+                  disabled={enviando}
+                >
+                  <Ionicons
+                    name="close-circle"
+                    size={26}
+                    color="#DC2626"
+                  />
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        </View>
+
+        {/* INFORMACIÓN ADICIONAL */}
+        <View style={styles.infoCard}>
+          <Ionicons
+            name="information-circle-outline"
+            size={22}
+            color="#23558C"
+          />
+
+          <Text style={styles.infoText}>
+            El reporte se asociará a tu contrato activo.
+            Su estado inicial será Pendiente y su prioridad será Media.
+          </Text>
+        </View>
+
+        {/* ENVIAR REPORTE */}
+        <TouchableOpacity
+          style={[
+            styles.submitButton,
+            enviando && styles.submitDisabled,
+          ]}
+          onPress={enviarReporte}
+          disabled={enviando}
+        >
+          {enviando ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <>
+              <Ionicons
+                name="send-outline"
+                size={20}
+                color="#FFFFFF"
+              />
+
+              <Text style={styles.submitText}>
+                Enviar reporte
+              </Text>
+            </>
+          )}
+        </TouchableOpacity>
+
+        {/* CANCELAR */}
+        <TouchableOpacity
+          style={styles.cancelButton}
+          onPress={() => navigation.goBack()}
+          disabled={enviando}
+        >
+          <Text style={styles.cancelText}>
+            Cancelar
+          </Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </KeyboardAvoidingView>
+  </SafeAreaView>
   );
 }
 
@@ -369,4 +574,64 @@ const styles = StyleSheet.create({
     color: '#64748B',
     fontSize: 14,
   },
+  
+fotosCard: {
+  backgroundColor: '#FFFFFF',
+  borderRadius: 14,
+  padding: 18,
+  marginBottom: 17,
+},
+fotosTitulo: {
+  fontSize: 14,
+  fontWeight: '600',
+  color: '#334155',
+},
+fotosSubtitulo: {
+  fontSize: 12,
+  color: '#64748B',
+  marginTop: 6,
+  marginBottom: 15,
+},
+fotosBotones: {
+  flexDirection: 'row',
+  gap: 10,
+},
+fotoBoton: {
+  flex: 1,
+  alignItems: 'center',
+  justifyContent: 'center',
+  paddingVertical: 16,
+  backgroundColor: '#EAF2F9',
+  borderRadius: 12,
+  gap: 7,
+},
+fotoBotonTexto: {
+  color: '#23558C',
+  fontSize: 13,
+  fontWeight: '600',
+},
+fotosPreview: {
+  flexDirection: 'row',
+  flexWrap: 'wrap',
+  gap: 10,
+  marginTop: 15,
+},
+fotoContenedor: {
+  width: 90,
+  height: 90,
+  position: 'relative',
+},
+fotoImagen: {
+  width: 90,
+  height: 90,
+  borderRadius: 10,
+},
+quitarFoto: {
+  position: 'absolute',
+  top: -8,
+  right: -8,
+  backgroundColor: '#FFFFFF',
+  borderRadius: 20,
+},
+
 });

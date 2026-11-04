@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,46 +11,119 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { obtenerMiEstadoCuenta } from '../services/api';
+import { useFocusEffect } from '@react-navigation/native';
+
+import {
+  obtenerMiEstadoCuenta,
+  obtenerMisReportes,
+} from '../services/api';
 
 export default function InicioScreen({ navigation, route }) {
-
-  // Datos recibidos después del login
   const { token, inquilino } = route.params || {};
 
+  // Estado de cuenta
   const [estadoCuenta, setEstadoCuenta] = useState(null);
-  const [cargando, setCargando] = useState(true);
-  const [actualizando, setActualizando] = useState(false);
-  const [error, setError] = useState('');
+  const [cargandoCuenta, setCargandoCuenta] = useState(true);
+  const [errorCuenta, setErrorCuenta] = useState('');
 
+  // Reportes reales
+  const [reportes, setReportes] = useState([]);
+  const [cargandoReportes, setCargandoReportes] = useState(true);
+  const [errorReportes, setErrorReportes] = useState('');
+
+  // Actualización manual
+  const [actualizando, setActualizando] = useState(false);
+
+  // CONSULTAR ESTADO DE CUENTA
   const cargarEstadoCuenta = useCallback(async () => {
     if (!token) {
-      setError('No se encontró una sesión válida. Inicia sesión nuevamente.');
-      setCargando(false);
+      setErrorCuenta('No se encontró una sesión válida.');
+      setEstadoCuenta(null);
+      setCargandoCuenta(false);
       return;
     }
 
     try {
-      setError('');
+      setErrorCuenta('');
       const datos = await obtenerMiEstadoCuenta(token);
       setEstadoCuenta(datos);
-    } catch (err) {
-      setError(err.message || 'No se pudo consultar el estado de cuenta.');
+    } catch (error) {
+      setErrorCuenta(
+        error.message || 'No se pudo consultar el estado de cuenta.'
+      );
+      setEstadoCuenta(null);
     } finally {
-      setCargando(false);
-      setActualizando(false);
+      setCargandoCuenta(false);
     }
   }, [token]);
 
-  useEffect(() => {
-    cargarEstadoCuenta();
-  }, [cargarEstadoCuenta]);
+  // CONSULTAR REPORTES REALES
+  const cargarReportes = useCallback(async () => {
+    if (!token) {
+      setErrorReportes('No se encontró una sesión válida.');
+      setReportes([]);
+      setCargandoReportes(false);
+      return;
+    }
 
+    try {
+      setErrorReportes('');
+
+      const datos = await obtenerMisReportes(token);
+
+      const reportesOrdenados = [...datos].sort((a, b) => {
+        const fechaA = new Date(a.fecha_reporte || 0).getTime();
+        const fechaB = new Date(b.fecha_reporte || 0).getTime();
+
+        if (fechaB !== fechaA) {
+          return fechaB - fechaA;
+        }
+
+        return Number(b.id_reporte) - Number(a.id_reporte);
+      });
+
+      setReportes(reportesOrdenados.slice(0, 3));
+    } catch (error) {
+      setErrorReportes(
+        error.message || 'No se pudieron consultar los reportes.'
+      );
+      setReportes([]);
+    } finally {
+      setCargandoReportes(false);
+    }
+  }, [token]);
+
+  // CONSULTAR AMBOS SERVICIOS
+  const cargarDatos = useCallback(async (esActualizacion = false) => {
+    if (esActualizacion) {
+      setActualizando(true);
+    }
+
+    try {
+      await Promise.all([
+        cargarEstadoCuenta(),
+        cargarReportes(),
+      ]);
+    } finally {
+      if (esActualizacion) {
+        setActualizando(false);
+      }
+    }
+  }, [cargarEstadoCuenta, cargarReportes]);
+
+  // ACTUALIZAR AL VOLVER A INICIO
+  useFocusEffect(
+    useCallback(() => {
+      cargarDatos();
+    }, [cargarDatos])
+  );
+
+  // DESLIZAR HACIA ABAJO PARA ACTUALIZAR
   const actualizar = () => {
-    setActualizando(true);
-    cargarEstadoCuenta();
+    cargarDatos(true);
   };
 
+  // FORMATO DE MONEDA
   const formatoMoneda = (cantidad) => {
     const numero = Number(cantidad);
 
@@ -64,28 +137,32 @@ export default function InicioScreen({ navigation, route }) {
     });
   };
 
-  const formatoFecha = (fecha) => {
-    if (!fecha) return 'No disponible';
+  // FORMATO DE FECHA
+  const formatoFecha = (valor) => {
+    if (!valor) return 'No disponible';
 
-    const fechaTexto = String(fecha);
-    const fechaSoloDia = fechaTexto.slice(0, 10);
-    const partes = fechaSoloDia.split('-');
+    const texto = String(valor);
 
-    if (partes.length !== 3) return fechaTexto;
+    // Fechas de PostgreSQL con formato YYYY-MM-DD
+    const partes = texto.slice(0, 10).split('-');
 
-    const [anio, mes, dia] = partes.map(Number);
+    if (partes.length === 3) {
+      const [anio, mes, dia] = partes.map(Number);
+      const fecha = new Date(anio, mes - 1, dia);
 
-    if (!anio || !mes || !dia) return fechaTexto;
+      if (!Number.isNaN(fecha.getTime())) {
+        return fecha.toLocaleDateString('es-MX', {
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric',
+        });
+      }
+    }
 
-    const fechaLocal = new Date(anio, mes - 1, dia);
-
-    return fechaLocal.toLocaleDateString('es-MX', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-    });
+    return texto;
   };
 
+  // NOMBRE DEL INQUILINO
   const nombreCompleto = estadoCuenta
     ? `${estadoCuenta.nombre || ''} ${estadoCuenta.apellido || ''}`.trim()
     : `${inquilino?.nombre || ''} ${inquilino?.apellido || ''}`.trim();
@@ -101,13 +178,56 @@ export default function InicioScreen({ navigation, route }) {
 
   const estadoPago = estadoCuenta?.estado || 'Sin información';
 
-  const mostrarProximamente = (modulo) => {
-    Alert.alert(
-      modulo,
-      'Este módulo se implementará en los siguientes sprints.'
-    );
+  // ETIQUETAS PARA LOS ESTADOS DE REPORTES
+  const obtenerEstadoReporte = (estado) => {
+    switch (String(estado || '').toLowerCase()) {
+      case 'resuelto':
+        return {
+          texto: 'Resuelto',
+          color: '#16A34A',
+          fondo: '#DCFCE7',
+        };
+
+      case 'en_proceso':
+        return {
+          texto: 'En proceso',
+          color: '#2563EB',
+          fondo: '#DBEAFE',
+        };
+
+      default:
+        return {
+          texto: 'Pendiente',
+          color: '#B45309',
+          fondo: '#FEF3C7',
+        };
+    }
   };
 
+  // ICONOS SEGÚN LA CATEGORÍA
+  const obtenerIconoReporte = (categoria) => {
+    switch (categoria) {
+      case 'plomeria':
+        return 'water-outline';
+
+      case 'electricidad':
+        return 'flash-outline';
+
+      case 'estructura':
+        return 'business-outline';
+
+      case 'electrodomesticos':
+        return 'tv-outline';
+
+      case 'limpieza':
+        return 'sparkles-outline';
+
+      default:
+        return 'construct-outline';
+    }
+  };
+
+  // MOSTRAR DETALLE DEL ESTADO DE CUENTA
   const mostrarDetalle = () => {
     if (!estadoCuenta) return;
 
@@ -125,9 +245,20 @@ export default function InicioScreen({ navigation, route }) {
     );
   };
 
-  return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+  // NAVEGACIÓN
+  const abrirReportes = () => {
+    navigation.navigate('Reportes', { token });
+  };
 
+  const abrirPerfil = () => {
+    navigation.navigate('Perfil', { inquilino, token });
+  };
+
+  return (
+    <SafeAreaView
+      style={styles.container}
+      edges={['top', 'bottom']}
+    >
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
@@ -144,13 +275,18 @@ export default function InicioScreen({ navigation, route }) {
         {/* ENCABEZADO */}
         <View style={styles.header}>
           <View style={styles.headerInfo}>
-            <Text style={styles.saludo}>Bienvenido,</Text>
-            <Text style={styles.nombre}>{nombreMostrar}</Text>
+            <Text style={styles.saludo}>
+              Bienvenido,
+            </Text>
+
+            <Text style={styles.nombre}>
+              {nombreMostrar}
+            </Text>
           </View>
 
           <TouchableOpacity
             style={styles.avatar}
-            onPress={() => navigation.navigate('Perfil', { inquilino, token })}
+            onPress={abrirPerfil}
           >
             <Text style={styles.avatarText}>
               {iniciales}
@@ -158,16 +294,19 @@ export default function InicioScreen({ navigation, route }) {
           </TouchableOpacity>
         </View>
 
-        {/* TARJETA DE CUOTA REAL */}
+        {/* ESTADO DE CUENTA REAL */}
         <View style={styles.cuotaCard}>
-
           <Text style={styles.cuotaLabel}>
             Tu último estado de cuenta
           </Text>
 
-          {cargando ? (
+          {cargandoCuenta ? (
             <View style={styles.cargandoContainer}>
-              <ActivityIndicator size="large" color="#FFFFFF" />
+              <ActivityIndicator
+                size="large"
+                color="#FFFFFF"
+              />
+
               <Text style={styles.cargandoTexto}>
                 Consultando tu estado de cuenta...
               </Text>
@@ -179,7 +318,9 @@ export default function InicioScreen({ navigation, route }) {
               </Text>
 
               <Text style={styles.cuotaFecha}>
-                Fecha límite: {formatoFecha(estadoCuenta.fecha_limite)}
+                Fecha límite: {formatoFecha(
+                  estadoCuenta.fecha_limite
+                )}
               </Text>
 
               <Text style={styles.cuotaFecha}>
@@ -218,109 +359,249 @@ export default function InicioScreen({ navigation, route }) {
             </Text>
           )}
 
-          {!!error && (
+          {!!errorCuenta && (
             <View style={styles.errorContainer}>
-              <Text style={styles.errorTexto}>{error}</Text>
-              <TouchableOpacity onPress={actualizar}>
+              <Text style={styles.errorTexto}>
+                {errorCuenta}
+              </Text>
+
+              <TouchableOpacity onPress={cargarEstadoCuenta}>
                 <Text style={styles.reintentar}>
                   Reintentar consulta
                 </Text>
               </TouchableOpacity>
             </View>
           )}
-
         </View>
 
         {/* ACCESOS RÁPIDOS */}
-        <Text style={styles.sectionTitle}>Accesos rápidos</Text>
+        <Text style={styles.sectionTitle}>
+          Accesos rápidos
+        </Text>
 
         <View style={styles.accesos}>
           <TouchableOpacity
             style={styles.accesoCard}
             onPress={() => navigation.navigate('Pagos', { token })}
           >
-            <Ionicons name="card-outline" size={27} color="#23558C" />
-            <Text style={styles.accesoText}>Mis pagos</Text>
+            <Ionicons
+              name="card-outline"
+              size={27}
+              color="#23558C"
+            />
+
+            <Text style={styles.accesoText}>
+              Mis pagos
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.accesoCard}
-            onPress={() => navigation.navigate('Reportes', { token })}
+            onPress={abrirReportes}
           >
-            <Ionicons name="construct-outline" size={27} color="#23558C" />
-            <Text style={styles.accesoText}>Reportes</Text>
+            <Ionicons
+              name="construct-outline"
+              size={27}
+              color="#23558C"
+            />
+
+            <Text style={styles.accesoText}>
+              Reportes
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.accesoCard}
-            onPress={() => navigation.navigate('Perfil', { inquilino, token })}
+            onPress={abrirPerfil}
           >
-            <Ionicons name="person-outline" size={27} color="#23558C" />
-            <Text style={styles.accesoText}>Perfil</Text>
+            <Ionicons
+              name="person-outline"
+              size={27}
+              color="#23558C"
+            />
+
+            <Text style={styles.accesoText}>
+              Perfil
+            </Text>
           </TouchableOpacity>
         </View>
 
-        {/* REPORTES DE EJEMPLO */}
-        <Text style={styles.sectionTitle}>Reportes de ejemplo</Text>
+        {/* ÚLTIMOS REPORTES REALES */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>
+            Últimos reportes
+          </Text>
 
-        <View style={styles.reporteCard}>
-          <View style={styles.reporteIcon}>
-            <Ionicons name="water-outline" size={23} color="#23558C" />
-          </View>
-
-          <View style={styles.reporteInfo}>
-            <Text style={styles.reporteTitulo}>
-              Fuga en llave de cocina
+          <TouchableOpacity onPress={abrirReportes}>
+            <Text style={styles.verTodos}>
+              Ver todos →
             </Text>
-            <Text style={styles.reporteFecha}>
-              15 de octubre de 2026
-            </Text>
-            <Text style={styles.enProceso}>En proceso</Text>
-          </View>
+          </TouchableOpacity>
         </View>
 
-        <View style={styles.reporteCard}>
-          <View style={styles.reporteIcon}>
-            <Ionicons name="bulb-outline" size={23} color="#23558C" />
-          </View>
+        {cargandoReportes ? (
+          <View style={styles.reporteCard}>
+            <ActivityIndicator
+              size="small"
+              color="#23558C"
+            />
 
-          <View style={styles.reporteInfo}>
-            <Text style={styles.reporteTitulo}>
-              Foco quemado en pasillo
+            <Text style={styles.mensajeReportes}>
+              Cargando reportes...
             </Text>
-            <Text style={styles.reporteFecha}>
-              8 de octubre de 2026
-            </Text>
-            <Text style={styles.resuelto}>Resuelto</Text>
           </View>
-        </View>
+        ) : errorReportes ? (
+          <View style={styles.reporteCard}>
+            <View style={styles.reporteIcon}>
+              <Ionicons
+                name="alert-circle-outline"
+                size={23}
+                color="#DC2626"
+              />
+            </View>
+
+            <View style={styles.reporteInfo}>
+              <Text style={styles.reporteTitulo}>
+                No se pudieron cargar los reportes
+              </Text>
+
+              <Text style={styles.reporteFecha}>
+                {errorReportes}
+              </Text>
+
+              <TouchableOpacity onPress={cargarReportes}>
+                <Text style={styles.reintentarReportes}>
+                  Reintentar
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : reportes.length === 0 ? (
+          <View style={styles.reporteCard}>
+            <View style={styles.reporteIcon}>
+              <Ionicons
+                name="document-text-outline"
+                size={23}
+                color="#23558C"
+              />
+            </View>
+
+            <View style={styles.reporteInfo}>
+              <Text style={styles.reporteTitulo}>
+                No tienes reportes registrados
+              </Text>
+
+              <Text style={styles.reporteFecha}>
+                Los reportes que crees aparecerán aquí.
+              </Text>
+
+              <TouchableOpacity
+                onPress={() =>
+                  navigation.navigate('NuevoReporte', { token })
+                }
+              >
+                <Text style={styles.reintentarReportes}>
+                  Crear un reporte →
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : (
+          reportes.map((reporte) => {
+            const estado = obtenerEstadoReporte(reporte.estado);
+
+            return (
+              <TouchableOpacity
+                key={reporte.id_reporte}
+                style={styles.reporteCard}
+                onPress={abrirReportes}
+              >
+                <View style={styles.reporteIcon}>
+                  <Ionicons
+                    name={obtenerIconoReporte(reporte.categoria)}
+                    size={23}
+                    color="#23558C"
+                  />
+                </View>
+
+                <View style={styles.reporteInfo}>
+                  <Text style={styles.reporteTitulo}>
+                    {reporte.titulo}
+                  </Text>
+
+                  <Text style={styles.reporteFecha}>
+                    {formatoFecha(reporte.fecha_reporte)}
+                  </Text>
+
+                  <View
+                    style={[
+                      styles.reporteEstado,
+                      { backgroundColor: estado.fondo },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.reporteEstadoTexto,
+                        { color: estado.color },
+                      ]}
+                    >
+                      {estado.texto}
+                    </Text>
+                  </View>
+                </View>
+
+                <Ionicons
+                  name="chevron-forward"
+                  size={18}
+                  color="#94A3B8"
+                />
+              </TouchableOpacity>
+            );
+          })
+        )}
 
       </ScrollView>
 
       {/* BARRA DE NAVEGACIÓN INFERIOR */}
       <View style={styles.bottomNav}>
-
         <TouchableOpacity style={styles.navItem}>
-          <Ionicons name="home" size={23} color="#23558C" />
-          <Text style={styles.navTextActive}>Inicio</Text>
+          <Ionicons
+            name="home"
+            size={23}
+            color="#23558C"
+          />
+          <Text style={styles.navTextActive}>
+            Inicio
+          </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.navItem}
-          onPress={() => navigation.navigate('Reportes', { token })}
+          onPress={abrirReportes}
         >
-          <Ionicons name="document-text-outline" size={23} color="#94A3B8" />
-          <Text style={styles.navText}>Reportes</Text>
+          <Ionicons
+            name="document-text-outline"
+            size={23}
+            color="#94A3B8"
+          />
+          <Text style={styles.navText}>
+            Reportes
+          </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.navItem}
-          onPress={() => navigation.navigate('Perfil', { inquilino, token })}
+          onPress={abrirPerfil}
         >
-          <Ionicons name="person-outline" size={23} color="#94A3B8" />
-          <Text style={styles.navText}>Perfil</Text>
+          <Ionicons
+            name="person-outline"
+            size={23}
+            color="#94A3B8"
+          />
+          <Text style={styles.navText}>
+            Perfil
+          </Text>
         </TouchableOpacity>
-
       </View>
     </SafeAreaView>
   );
@@ -465,6 +746,17 @@ const styles = StyleSheet.create({
     color: '#334155',
     marginTop: 9,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  verTodos: {
+    fontSize: 12,
+    color: '#23558C',
+    fontWeight: 'bold',
+  },
   reporteCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 13,
@@ -472,6 +764,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 12,
+    gap: 10,
   },
   reporteIcon: {
     width: 43,
@@ -480,7 +773,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#EAF2F9',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 13,
   },
   reporteInfo: {
     flex: 1,
@@ -495,15 +787,26 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
     marginTop: 4,
   },
-  enProceso: {
-    fontSize: 12,
-    color: '#2563EB',
-    marginTop: 5,
+  reporteEstado: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginTop: 8,
   },
-  resuelto: {
+  reporteEstadoTexto: {
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
+  mensajeReportes: {
     fontSize: 12,
-    color: '#16A34A',
-    marginTop: 5,
+    color: '#64748B',
+  },
+  reintentarReportes: {
+    fontSize: 12,
+    color: '#23558C',
+    fontWeight: 'bold',
+    marginTop: 10,
   },
   bottomNav: {
     flexDirection: 'row',
