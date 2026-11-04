@@ -106,10 +106,10 @@ const quitarFotografia = (indice) => {
 
 
   
+
 const enviarReporte = async () => {
   if (enviando) return;
 
-  // Validaciones
   if (!titulo.trim()) {
     Alert.alert('Campo obligatorio', 'Escribe el título del reporte.');
     return;
@@ -126,10 +126,7 @@ const enviarReporte = async () => {
   }
 
   if (titulo.trim().length > 150 || descripcion.trim().length > 2000) {
-    Alert.alert(
-      'Texto demasiado largo',
-      'Revisa la longitud del título y la descripción.'
-    );
+    Alert.alert('Texto demasiado largo', 'Revisa el título y la descripción.');
     return;
   }
 
@@ -147,8 +144,16 @@ const enviarReporte = async () => {
 
   let reporteCreado = null;
 
+  const continuarACita = (idReporte) => {
+    navigation.replace('NuevaCita', {
+      token,
+      idReporte,
+      tituloReporte: titulo.trim(),
+    });
+  };
+
   try {
-    // PASO 1: Guardar el reporte en Neon
+    // 1. Guardar el reporte en Neon
     const resultado = await crearReporte(token, {
       titulo: titulo.trim(),
       descripcion: descripcion.trim(),
@@ -161,45 +166,49 @@ const enviarReporte = async () => {
       throw new Error('No se recibió el identificador del reporte.');
     }
 
-    // PASO 2: Subir fotografías a Cloudinary y Neon
+    // 2. Subir las fotos a Cloudinary
     if (fotografias.length > 0) {
-      await subirFotosReporte(
-        token,
-        reporteCreado.id_reporte,
-        fotografias
-      );
+      try {
+        await subirFotosReporte(
+          token,
+          reporteCreado.id_reporte,
+          fotografias
+        );
+      } catch (errorFotos) {
+        Alert.alert(
+          'Reporte guardado, fotografías pendientes',
+          `El reporte #${reporteCreado.id_reporte} ya existe, pero no se pudieron confirmar las fotografías.\n\n${errorFotos.message}\n\nPuedes continuar con tu cita sin crear otro reporte.`,
+          [
+            {
+              text: 'Continuar a la cita',
+              onPress: () =>
+                continuarACita(reporteCreado.id_reporte),
+            },
+          ]
+        );
+        return;
+      }
     }
 
-    // PASO 3: Confirmar que todo se guardó
-    Alert.alert(
-      'Reporte registrado',
-      fotografias.length > 0
-        ? `El reporte #${reporteCreado.id_reporte} y sus ${fotografias.length} fotografía(s) se guardaron correctamente.`
-        : `El reporte #${reporteCreado.id_reporte} se guardó correctamente.`,
-      [
-        {
-          text: 'Aceptar',
-          onPress: () => navigation.goBack(),
-        },
-      ]
-    );
+    // 3. Continuar directamente con la cita
+    continuarACita(reporteCreado.id_reporte);
 
   } catch (error) {
     if (reporteCreado?.id_reporte) {
-      // El reporte ya existe, aunque las fotografías fallen
       Alert.alert(
-        'Reporte guardado, fotografías pendientes',
-        `Se creó el reporte #${reporteCreado.id_reporte}, pero no se pudieron confirmar sus fotografías.\n\n${error.message}\n\nNo vuelvas a enviar el mismo reporte porque se duplicaría.`,
+        'Reporte creado',
+        `El reporte #${reporteCreado.id_reporte} ya está registrado. Evita volver a enviarlo.`,
         [
           {
-            text: 'Entendido',
-            onPress: () => navigation.goBack(),
+            text: 'Continuar a la cita',
+            onPress: () =>
+              continuarACita(reporteCreado.id_reporte),
           },
         ]
       );
     } else {
       Alert.alert(
-        'Error al registrar',
+        'Error al registrar reporte',
         error.message || 'No se pudo guardar el reporte.'
       );
     }
@@ -207,6 +216,7 @@ const enviarReporte = async () => {
     setEnviando(false);
   }
 };
+
 
 
   return (

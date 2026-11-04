@@ -13,6 +13,13 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { obtenerMisReportes } from '../services/api';
+import { useEffect } from 'react';
+import { Image } from 'react-native';
+
+import {
+  obtenerFotosReporte,
+  obtenerMisCitas,
+} from '../services/api';
 
 export default function ReportesScreen({ navigation, route }) {
   const token = route.params?.token;
@@ -21,6 +28,9 @@ export default function ReportesScreen({ navigation, route }) {
   const [cargando, setCargando] = useState(true);
   const [actualizando, setActualizando] = useState(false);
   const [error, setError] = useState('');
+  const [fotosPorReporte, setFotosPorReporte] = useState({});
+  const [citasPorReporte, setCitasPorReporte] = useState({});
+  const [cargandoDetalles, setCargandoDetalles] = useState(false);    
 
   const cargarReportes = useCallback(async () => {
     if (!token) {
@@ -76,6 +86,128 @@ export default function ReportesScreen({ navigation, route }) {
         return '#D97706';
     }
   };
+
+  
+useEffect(() => {
+  let activo = true;
+
+  const cargarDetallesReportes = async () => {
+    if (!token || !Array.isArray(reportes) || reportes.length === 0) {
+      if (activo) {
+        setFotosPorReporte({});
+        setCitasPorReporte({});
+        setCargandoDetalles(false);
+      }
+      return;
+    }
+
+    setCargandoDetalles(true);
+
+    try {
+      // Consultar todas las citas del inquilino
+      const promesaCitas = obtenerMisCitas(token).catch((error) => {
+  console.error('Error al consultar citas:', error.message);
+  return [];
+});
+
+      // Consultar las fotografías de cada reporte
+      const promesasFotos = reportes.map(async (reporte) => {
+        try {
+          const resultado = await obtenerFotosReporte(
+            token,
+            reporte.id_reporte
+          );
+
+          const fotos = Array.isArray(resultado)
+            ? resultado
+            : resultado.fotos || [];
+
+          return {
+            idReporte: reporte.id_reporte,
+            fotos,
+          };
+        } catch (error) {
+          console.error(
+            `Error al consultar fotos del reporte #${reporte.id_reporte}:`,
+            error.message
+          );
+
+          return {
+            idReporte: reporte.id_reporte,
+            fotos: null,
+          };
+        }
+      });
+
+      const [resultadoCitas, resultadosFotos] =
+        await Promise.all([
+          promesaCitas,
+          Promise.all(promesasFotos),
+        ]);
+
+      if (!activo) return;
+
+      const nuevasFotos = {};
+
+      resultadosFotos.forEach(({ idReporte, fotos }) => {
+        nuevasFotos[idReporte] = fotos;
+      });
+
+      setFotosPorReporte(nuevasFotos);
+
+      // Agrupar citas por reporte
+      const nuevasCitas = {};
+
+      const citas = Array.isArray(resultadoCitas)
+        ? resultadoCitas
+        : resultadoCitas.citas || [];
+
+      citas.forEach((cita) => {
+        const id = cita.id_reporte;
+
+        if (!nuevasCitas[id]) {
+          nuevasCitas[id] = [];
+        }
+
+        nuevasCitas[id].push(cita);
+      });
+
+      setCitasPorReporte(nuevasCitas);
+
+    } catch (error) {
+      console.error(
+        'Error al consultar citas:',
+        error.message
+      );
+
+      if (activo) {
+        setCitasPorReporte({});
+      }
+    } finally {
+      if (activo) {
+        setCargandoDetalles(false);
+      }
+    }
+  };
+
+  cargarDetallesReportes();
+
+  return () => {
+    activo = false;
+  };
+}, [token, reportes]);
+
+const formatearFechaCita = (fecha) => {
+  if (!fecha) return 'Sin fecha';
+
+  // El backend devuelve YYYY-MM-DD
+  const partes = String(fecha).slice(0, 10).split('-');
+
+  if (partes.length !== 3) return String(fecha);
+
+  return `${partes[2]}/${partes[1]}/${partes[0]}`;
+};
+
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -164,60 +296,150 @@ export default function ReportesScreen({ navigation, route }) {
             </Text>
           </View>
         ) : (
-          reportes.map((reporte) => (
-            <View
-              key={reporte.id_reporte}
-              style={styles.reportCard}
-            >
-              <View style={styles.reportHeader}>
-                <Text style={styles.reportTitle}>
-                  {reporte.titulo}
-                </Text>
+          
 
-                <View
-                  style={[
-                    styles.statusBadge,
-                    {
-                      backgroundColor:
-                        colorEstado(reporte.estado) + '18',
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.statusText,
-                      {
-                        color: colorEstado(reporte.estado),
-                      },
-                    ]}
-                  >
-                    {reporte.estado || 'Sin estado'}
-                  </Text>
-                </View>
-              </View>
+reportes.map((reporte) => {
+  const fotos = fotosPorReporte[reporte.id_reporte];
+  const citas = citasPorReporte[reporte.id_reporte] || [];
 
-              <Text style={styles.description}>
-                {reporte.descripcion || 'Sin descripción'}
+  // Preferir una cita activa si existe
+  const cita =
+    citas.find((item) =>
+      ['programada', 'confirmada'].includes(item.estado)
+    ) || citas[0];
+
+  return (
+    <View
+      key={reporte.id_reporte}
+      style={styles.reportCard}
+    >
+      {/* ENCABEZADO DEL REPORTE */}
+      <View style={styles.reportHeader}>
+        <Text style={styles.reportTitle}>
+          {reporte.titulo}
+        </Text>
+
+        <View
+          style={[
+            styles.statusBadge,
+            {
+              backgroundColor:
+                colorEstado(reporte.estado) + '18',
+            },
+          ]}
+        >
+          <Text
+            style={[
+              styles.statusText,
+              { color: colorEstado(reporte.estado) },
+            ]}
+          >
+            {reporte.estado || 'Sin estado'}
+          </Text>
+        </View>
+      </View>
+
+      {/* DESCRIPCIÓN */}
+      <Text style={styles.description}>
+        {reporte.descripcion || 'Sin descripción'}
+      </Text>
+
+      <View style={styles.divider} />
+
+      {/* DETALLES */}
+      <Text style={styles.detail}>
+        Categoría: {reporte.categoria || 'General'}
+      </Text>
+
+      <Text style={styles.detail}>
+        Prioridad: {reporte.prioridad || 'No asignada'}
+      </Text>
+
+      <Text style={styles.detail}>
+        Fecha: {formatoFecha(
+          reporte.fecha_reporte ||
+          reporte.fecha_creacion
+        )}
+      </Text>
+
+      {/* FOTOGRAFÍAS DEL REPORTE */}
+      <View style={styles.seccionDetalles}>
+        <Text style={styles.seccionTitulo}>
+          Fotografías del reporte
+        </Text>
+
+        {cargandoDetalles && fotos === undefined ? (
+          <Text style={styles.sinDatos}>
+            Cargando fotografías...
+          </Text>
+        ) : fotos === null ? (
+          <Text style={styles.sinDatos}>
+            No se pudieron cargar las fotografías.
+          </Text>
+        ) : fotos && fotos.length > 0 ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.fotosContainer}
+          >
+            {fotos.map((foto) => (
+              <Image
+                key={foto.id_foto}
+                source={{ uri: foto.url_foto }}
+                style={styles.fotoReporte}
+                resizeMode="cover"
+              />
+            ))}
+          </ScrollView>
+        ) : (
+          <Text style={styles.sinDatos}>
+            Este reporte no tiene fotografías.
+          </Text>
+        )}
+      </View>
+
+      {/* CITA DE MANTENIMIENTO */}
+      <View style={styles.seccionDetalles}>
+        <Text style={styles.seccionTitulo}>
+          Cita de mantenimiento
+        </Text>
+
+        {cargandoDetalles &&
+        citasPorReporte[reporte.id_reporte] === undefined ? (
+          <Text style={styles.sinDatos}>
+            Cargando cita...
+          </Text>
+        ) : cita ? (
+          <View style={styles.citaInfo}>
+            <Text style={styles.citaDetalle}>
+              Fecha: {formatearFechaCita(cita.fecha_cita)}
+            </Text>
+
+            <Text style={styles.citaDetalle}>
+              Hora: {String(cita.hora_cita).slice(0, 5)}
+            </Text>
+
+            <Text style={styles.citaDetalle}>
+              Estado: {cita.estado}
+            </Text>
+
+            {!!cita.observaciones && (
+              <Text style={styles.citaDetalle}>
+                Observaciones: {cita.observaciones}
               </Text>
+            )}
+          </View>
+        ) : (
+          <Text style={styles.sinDatos}>
+            Este reporte todavía no tiene una cita registrada.
+          </Text>
+        )}
+      </View>
+    </View>
+  );
+})
 
-              <View style={styles.divider} />
 
-              <Text style={styles.detail}>
-                Categoría: {reporte.categoria || 'General'}
-              </Text>
-
-              <Text style={styles.detail}>
-                Prioridad: {reporte.prioridad || 'No asignada'}
-              </Text>
-
-              <Text style={styles.detail}>
-                Fecha: {formatoFecha(
-                  reporte.fecha_reporte ||
-                  reporte.fecha_creacion
-                )}
-              </Text>
-            </View>
-          ))
         )}
       </ScrollView>
     </SafeAreaView>
@@ -329,4 +551,65 @@ const styles = StyleSheet.create({
     color: '#23558C',
     fontWeight: 'bold',
   },
+  citaButton: {
+  backgroundColor: '#23558C',
+  borderRadius: 10,
+  paddingVertical: 13,
+  marginTop: 15,
+  flexDirection: 'row',
+  justifyContent: 'center',
+  alignItems: 'center',
+  gap: 9,
+},
+citaButtonText: {
+  color: '#FFFFFF',
+  fontSize: 13,
+  fontWeight: 'bold',
+},
+
+seccionDetalles: {
+  marginTop: 18,
+  paddingTop: 14,
+  borderTopWidth: 1,
+  borderTopColor: '#E2E8F0',
+},
+
+seccionTitulo: {
+  fontSize: 14,
+  fontWeight: 'bold',
+  color: '#23558C',
+  marginBottom: 12,
+},
+
+fotosContainer: {
+  gap: 10,
+  paddingBottom: 5,
+},
+
+fotoReporte: {
+  width: 145,
+  height: 115,
+  borderRadius: 10,
+  backgroundColor: '#E2E8F0',
+},
+
+sinDatos: {
+  fontSize: 12,
+  color: '#64748B',
+  fontStyle: 'italic',
+  lineHeight: 19,
+},
+
+citaInfo: {
+  backgroundColor: '#EAF2F9',
+  borderRadius: 10,
+  padding: 14,
+},
+
+citaDetalle: {
+  fontSize: 13,
+  color: '#334155',
+  marginBottom: 7,
+},
+
 });
