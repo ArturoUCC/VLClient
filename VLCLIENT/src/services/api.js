@@ -100,3 +100,25 @@ export const obtenerMisReportes = async (token) => {
 
   return data.reportes || [];
 };
+
+
+export const crearReporte = async (token, reporte) => {
+  const response = await fetch(`${API_URL}/reportes/crear`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(reporte),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(
+      data.mensaje || 'No se pudo registrar el reporte'
+    );
+  }
+
+  return data;
+};

@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -41,9 +42,11 @@ export default function ReportesScreen({ navigation, route }) {
     }
   }, [token]);
 
-  useEffect(() => {
+  useFocusEffect(
+  useCallback(() => {
     cargarReportes();
-  }, [cargarReportes]);
+  }, [cargarReportes])
+);
 
   const formatoFecha = (valor) => {
     if (!valor) return 'Sin fecha';
@@ -108,12 +111,7 @@ export default function ReportesScreen({ navigation, route }) {
 
         <TouchableOpacity
           style={styles.createButton}
-          onPress={() =>
-            Alert.alert(
-              'Nuevo reporte',
-              'Activaremos el formulario en el siguiente paso.'
-            )
-          }
+          onPress={() => navigation.navigate('NuevoReporte', { token })}
         >
           <Ionicons
             name="add-circle-outline"
