@@ -12,6 +12,7 @@ const estadosCuentaRoutes = require('./routes/estadosCuentaRoutes');
 const authRoutes = require('./routes/authRoutes');
 const perfilRoutes = require('./routes/perfilRoutes');
 const pagosRoutes = require('./routes/pagosRoutes');
+const reportesRoutes = require('./routes/reportesRoutes');
 
 // Middlewares
 app.use(helmet());
@@ -22,6 +23,7 @@ app.use('/api/estados-de-cuenta', estadosCuentaRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/perfil', perfilRoutes);
 app.use('/api/pagos', pagosRoutes);
+app.use('/api/reportes', reportesRoutes);
 
 // Ruta para comprobar que funciona la API
 app.get('/api', (req, res) => {

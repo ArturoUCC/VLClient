@@ -7,6 +7,7 @@ import LoginScreen from './src/screens/LoginScreen';
 import InicioScreen from './src/screens/InicioScreen';
 import PerfilScreen from './src/screens/PerfilScreen';
 import PagosScreen from './src/screens/PagosScreen';
+import ReportesScreen from './src/screens/ReportesScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -42,6 +43,12 @@ export default function App() {
          name="Pagos"
          component={PagosScreen}
          options={{ title: 'Mis pagos' }}
+        />
+
+        <Stack.Screen
+         name="Reportes"
+         component={ReportesScreen}
+         options={{ title: 'Mis reportes' }}
         />
       </Stack.Navigator>
     </NavigationContainer>

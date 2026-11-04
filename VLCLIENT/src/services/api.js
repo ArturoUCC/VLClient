@@ -81,3 +81,22 @@ export const obtenerMisPagos = async (token) => {
   return data.pagos || [];
 };
 
+
+export const obtenerMisReportes = async (token) => {
+  const response = await fetch(`${API_URL}/reportes/mis-reportes`, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(
+      data.mensaje || 'No se pudieron consultar los reportes'
+    );
+  }
+
+  return data.reportes || [];
+};

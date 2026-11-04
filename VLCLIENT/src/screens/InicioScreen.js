@@ -245,7 +245,7 @@ export default function InicioScreen({ navigation, route }) {
 
           <TouchableOpacity
             style={styles.accesoCard}
-            onPress={() => mostrarProximamente('Reportes')}
+            onPress={() => navigation.navigate('Reportes', { token })}
           >
             <Ionicons name="construct-outline" size={27} color="#23558C" />
             <Text style={styles.accesoText}>Reportes</Text>
@@ -307,7 +307,7 @@ export default function InicioScreen({ navigation, route }) {
 
         <TouchableOpacity
           style={styles.navItem}
-          onPress={() => mostrarProximamente('Reportes')}
+          onPress={() => navigation.navigate('Reportes', { token })}
         >
           <Ionicons name="document-text-outline" size={23} color="#94A3B8" />
           <Text style={styles.navText}>Reportes</Text>
