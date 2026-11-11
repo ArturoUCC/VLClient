@@ -12,14 +12,15 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
-
 import {
   obtenerMiEstadoCuenta,
   obtenerMisReportes,
+  obtenerMisNotificaciones,
 } from '../services/api';
 
 export default function InicioScreen({ navigation, route }) {
   const { token, inquilino } = route.params || {};
+  const [notificacionesNoLeidas, setNotificacionesNoLeidas] = useState(0);
 
   // Estado de cuenta
   const [estadoCuenta, setEstadoCuenta] = useState(null);
@@ -93,7 +94,35 @@ export default function InicioScreen({ navigation, route }) {
     }
   }, [token]);
 
-  // CONSULTAR AMBOS SERVICIOS
+  // CONSULTAR NOTIFICACIONES PENDIENTES
+  const cargarResumenNotificaciones = useCallback(async () => {
+    if (!token) {
+      setNotificacionesNoLeidas(0);
+      return;
+    }
+
+    try {
+      const datos = await obtenerMisNotificaciones(token);
+      const pendientes = Number(datos?.no_leidas);
+
+      if (Number.isFinite(pendientes) && pendientes >= 0) {
+        setNotificacionesNoLeidas(pendientes);
+      } else {
+        const lista = Array.isArray(datos?.notificaciones)
+          ? datos.notificaciones
+          : [];
+        setNotificacionesNoLeidas(
+          lista.filter((notificacion) => !notificacion.leida).length
+        );
+      }
+    } catch (error) {
+      // Si falla la consulta, no mostramos un indicador desactualizado.
+      setNotificacionesNoLeidas(0);
+      console.log('Error al consultar notificaciones:', error.message);
+    }
+  }, [token]);
+
+  // CONSULTAR LOS SERVICIOS DE INICIO
   const cargarDatos = useCallback(async (esActualizacion = false) => {
     if (esActualizacion) {
       setActualizando(true);
@@ -103,13 +132,14 @@ export default function InicioScreen({ navigation, route }) {
       await Promise.all([
         cargarEstadoCuenta(),
         cargarReportes(),
+        cargarResumenNotificaciones(),
       ]);
     } finally {
       if (esActualizacion) {
         setActualizando(false);
       }
     }
-  }, [cargarEstadoCuenta, cargarReportes]);
+  }, [cargarEstadoCuenta, cargarReportes, cargarResumenNotificaciones]);
 
   // ACTUALIZAR AL VOLVER A INICIO
   useFocusEffect(
@@ -272,27 +302,50 @@ export default function InicioScreen({ navigation, route }) {
         }
       >
 
-        {/* ENCABEZADO */}
-        <View style={styles.header}>
-          <View style={styles.headerInfo}>
-            <Text style={styles.saludo}>
-              Bienvenido,
-            </Text>
+        
+{/* ENCABEZADO */}
+<View style={styles.header}>
+  <View style={styles.headerInfo}>
+    <Text style={styles.saludo}>
+      Bienvenido,
+    </Text>
 
-            <Text style={styles.nombre}>
-              {nombreMostrar}
-            </Text>
-          </View>
+    <Text style={styles.nombre}>
+      {nombreMostrar}
+    </Text>
+  </View>
 
-          <TouchableOpacity
-            style={styles.avatar}
-            onPress={abrirPerfil}
-          >
-            <Text style={styles.avatarText}>
-              {iniciales}
-            </Text>
-          </TouchableOpacity>
-        </View>
+  {/* CAMPANITA DE NOTIFICACIONES */}
+  <TouchableOpacity
+    style={styles.botonNotificaciones}
+    onPress={() =>
+      navigation.navigate('Notificaciones', {
+        token,
+      })
+    }
+  >
+    <Ionicons
+      name="notifications-outline"
+      size={26}
+      color="#23558C"
+    />
+
+    {notificacionesNoLeidas > 0 && (
+      <View style={styles.puntoNotificacion} />
+    )}
+  </TouchableOpacity>
+
+  {/* AVATAR DEL USUARIO */}
+  <TouchableOpacity
+    style={styles.avatar}
+    onPress={abrirPerfil}
+  >
+    <Text style={styles.avatarText}>
+      {iniciales}
+    </Text>
+  </TouchableOpacity>
+</View>
+
 
         {/* ESTADO DE CUENTA REAL */}
         <View style={styles.cuotaCard}>
@@ -831,5 +884,25 @@ const styles = StyleSheet.create({
     color: '#23558C',
     fontWeight: 'bold',
     marginTop: 4,
+  },
+  botonNotificaciones: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#EAF2F9',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  puntoNotificacion: {
+    position: 'absolute',
+    top: 7,
+    right: 7,
+    width: 11,
+    height: 11,
+    borderRadius: 6,
+    backgroundColor: '#2563EB',
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
   },
 });

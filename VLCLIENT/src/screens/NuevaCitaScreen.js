@@ -130,9 +130,29 @@ export default function NuevaCitaScreen({ navigation, route }) {
   };
 
   // NAVEGAR A REPORTES
-  const volverAInicio = () => {
-  navigation.popTo('Inicio');
+  
+const volverAInicio = () => {
+  // Buscar la pantalla Inicio que ya existe
+  // en el historial de navegación.
+  const estadoNavegacion = navigation.getState();
+
+  const pantallaInicio = estadoNavegacion.routes.find(
+    (pantalla) => pantalla.name === 'Inicio'
+  );
+
+  // Recuperar los parámetros originales del Inicio.
+  const parametrosInicio = pantallaInicio?.params || {};
+
+  // Conservar tanto el token como los datos del inquilino.
+  const parametrosActualizados = {
+    ...parametrosInicio,
+    token: token || parametrosInicio.token,
+  };
+
+  // Regresar a Inicio sin perder la sesión.
+  navigation.popTo('Inicio', parametrosActualizados);
 };
+
 
   // GUARDAR CITA EN NEON
   const guardarCita = async () => {

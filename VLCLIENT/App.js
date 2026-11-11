@@ -10,6 +10,7 @@ import PagosScreen from './src/screens/PagosScreen';
 import ReportesScreen from './src/screens/ReportesScreen';
 import NuevoReporteScreen from './src/screens/NuevoReporteScreen';
 import NuevaCitaScreen from './src/screens/NuevaCitaScreen';
+import NotificacionesScreen from './src/screens/NotificacionesScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -63,6 +64,12 @@ export default function App() {
          name="NuevaCita"
          component={NuevaCitaScreen}
          options={{ title: 'Programar cita' }}
+        />
+
+        <Stack.Screen
+         name="Notificaciones"
+         component={NotificacionesScreen}
+         options={{ title: 'Mis notificaciones' }}
         />
       </Stack.Navigator>
     </NavigationContainer>

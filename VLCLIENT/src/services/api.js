@@ -242,3 +242,72 @@ export const crearCita = async (token, cita) => {
   return data;
 };
 
+
+export const obtenerMisNotificaciones = async (token) => {
+  const response = await fetch(
+    `${API_URL}/notificaciones/mis-notificaciones`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(
+      data.mensaje || 'No se pudieron consultar las notificaciones'
+    );
+  }
+
+  return data;
+};
+
+export const marcarNotificacionLeida = async (
+  token,
+  idNotificacion
+) => {
+  const response = await fetch(
+    `${API_URL}/notificaciones/${idNotificacion}/leida`,
+    {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(
+      data.mensaje || 'No se pudo marcar la notificación'
+    );
+  }
+
+  return data;
+};
+
+export const marcarTodasNotificacionesLeidas = async (token) => {
+  const response = await fetch(
+    `${API_URL}/notificaciones/marcar-todas-leidas`,
+    {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(
+      data.mensaje || 'No se pudieron actualizar las notificaciones'
+    );
+  }
+
+  return data;
+};
+
