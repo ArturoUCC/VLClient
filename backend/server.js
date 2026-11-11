@@ -15,6 +15,7 @@ const pagosRoutes = require('./routes/pagosRoutes');
 const reportesRoutes = require('./routes/reportesRoutes');
 const reporteFotosRoutes = require('./routes/reporteFotosRoutes');
 const citasRoutes = require('./routes/citasRoutes');
+const notificacionesRoutes = require('./routes/notificacionesRoutes');
 
 // Middlewares
 app.use(helmet());
@@ -28,6 +29,7 @@ app.use('/api/pagos', pagosRoutes);
 app.use('/api/reportes', reportesRoutes);
 app.use('/api/reporte-fotos', reporteFotosRoutes);
 app.use('/api/citas', citasRoutes);
+app.use('/api/notificaciones', notificacionesRoutes);
 
 // Ruta para comprobar que funciona la API
 app.get('/api', (req, res) => {
