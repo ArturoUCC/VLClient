@@ -1,6 +1,10 @@
 const pool = require('../config/db');
 
-// Consultar reportes del inquilino autenticado
+const {
+  crearNotificacionSegura,
+} = require('../services/notificacionesService');
+
+// CONSULTAR REPORTES DEL INQUILINO AUTENTICADO
 const obtenerMisReportes = async (req, res) => {
   try {
     const idInquilino = req.usuario.id_inquilino;
@@ -17,26 +21,33 @@ const obtenerMisReportes = async (req, res) => {
 
     return res.status(200).json({
       total_registros: resultado.rows.length,
-      reportes: resultado.rows
+      reportes: resultado.rows,
     });
 
   } catch (error) {
-    console.error('Error al consultar reportes:', error.message);
+    console.error(
+      'Error al consultar reportes:',
+      error.message
+    );
 
     return res.status(500).json({
-      mensaje: 'No se pudieron consultar los reportes'
+      mensaje: 'No se pudieron consultar los reportes',
     });
   }
 };
 
-// Crear un nuevo reporte de mantenimiento
+// CREAR UN NUEVO REPORTE DE MANTENIMIENTO
 const crearReporte = async (req, res) => {
   try {
     const idInquilino = req.usuario.id_inquilino;
 
-    const { titulo, descripcion, categoria } = req.body || {};
+    const {
+      titulo,
+      descripcion,
+      categoria,
+    } = req.body || {};
 
-    // Validar título y descripción
+    // VALIDAR CAMPOS OBLIGATORIOS
     if (
       typeof titulo !== 'string' ||
       typeof descripcion !== 'string' ||
@@ -45,37 +56,40 @@ const crearReporte = async (req, res) => {
       !descripcion.trim()
     ) {
       return res.status(400).json({
-        mensaje: 'Título, descripción y categoría son obligatorios'
+        mensaje: 'Título, descripción y categoría son obligatorios',
       });
     }
 
     const tituloLimpio = titulo.trim();
     const descripcionLimpia = descripcion.trim();
 
-    if (tituloLimpio.length > 150 || descripcionLimpia.length > 2000) {
+    // VALIDAR LONGITUD DE TEXTOS
+    if (
+      tituloLimpio.length > 150 ||
+      descripcionLimpia.length > 2000
+    ) {
       return res.status(400).json({
-        mensaje: 'El título o la descripción supera la longitud permitida'
+        mensaje: 'El título o la descripción supera la longitud permitida',
       });
     }
 
-    // Categorías permitidas por Neon Tech
+    // CATEGORÍAS PERMITIDAS POR NEON TECH
     const categoriasPermitidas = [
       'plomeria',
       'electricidad',
       'estructura',
       'electrodomesticos',
       'limpieza',
-      'otro'
+      'otro',
     ];
 
     if (!categoriasPermitidas.includes(categoria)) {
       return res.status(400).json({
-        mensaje: 'La categoría seleccionada no es válida'
+        mensaje: 'La categoría seleccionada no es válida',
       });
     }
 
-    // Asociar el reporte al contrato vigente del usuario.
-    // El cliente no puede elegir el id_contrato.
+    // ASOCIAR EL REPORTE AL CONTRATO ACTIVO
     const resultado = await pool.query(
       `INSERT INTO reportes (
         id_contrato,
@@ -103,31 +117,51 @@ const crearReporte = async (req, res) => {
         idInquilino,
         tituloLimpio,
         descripcionLimpia,
-        categoria
+        categoria,
       ]
     );
 
+    // VERIFICAR QUE EXISTA UN CONTRATO ACTIVO
     if (resultado.rows.length === 0) {
       return res.status(404).json({
-        mensaje: 'No se encontró un contrato activo'
+        mensaje: 'No se encontró un contrato activo',
       });
     }
 
+    const reporteCreado = resultado.rows[0];
+
+    // GENERAR NOTIFICACIÓN AUTOMÁTICA
+    // El reporte ya está guardado en Neon.
+    // Si falla la notificación, no se elimina el reporte.
+    await crearNotificacionSegura({
+      idInquilino,
+      titulo: 'Reporte de mantenimiento registrado',
+      mensaje:
+        `Tu reporte #${reporteCreado.id_reporte} ` +
+        `"${reporteCreado.titulo}" fue registrado ` +
+        'correctamente. Puedes consultar su estado en VLClient.',
+      tipo: 'reporte',
+    });
+
+    // RESPUESTA AL CLIENTE
     return res.status(201).json({
       mensaje: 'Reporte registrado correctamente',
-      reporte: resultado.rows[0]
+      reporte: reporteCreado,
     });
 
   } catch (error) {
-    console.error('Error al crear reporte:', error.message);
+    console.error(
+      'Error al crear reporte:',
+      error.message
+    );
 
     return res.status(500).json({
-      mensaje: 'No se pudo registrar el reporte'
+      mensaje: 'No se pudo registrar el reporte',
     });
   }
 };
 
 module.exports = {
   obtenerMisReportes,
-  crearReporte
+  crearReporte,
 };

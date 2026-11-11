@@ -1,23 +1,35 @@
 const pool = require('../config/db');
 
+const {
+  crearNotificacionSegura,
+} = require('../services/notificacionesService');
+
 const ZONA_HORARIA = 'America/Mexico_City';
 
-// Fecha actual en México: YYYY-MM-DD
-const obtenerFechaActual = () => {
-  const partes = new Intl.DateTimeFormat('en-CA', {
+// OBTENER FECHA Y HORA ACTUAL EN MÉXICO
+const obtenerFechaHoraActual = () => {
+  const partes = new Intl.DateTimeFormat('en-US', {
     timeZone: ZONA_HORARIA,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
   }).formatToParts(new Date());
 
   const obtener = (tipo) =>
     partes.find((parte) => parte.type === tipo)?.value;
 
-  return `${obtener('year')}-${obtener('month')}-${obtener('day')}`;
+  return {
+    fecha:
+      `${obtener('year')}-${obtener('month')}-${obtener('day')}`,
+    hora:
+      `${obtener('hour')}:${obtener('minute')}`,
+  };
 };
 
-// Validar formato y existencia de la fecha
+// VALIDAR FORMATO Y EXISTENCIA DE LA FECHA
 const fechaValida = (valor) => {
   if (typeof valor !== 'string') return false;
 
@@ -35,7 +47,7 @@ const fechaValida = (valor) => {
   );
 };
 
-// Consultar citas pertenecientes al inquilino
+// CONSULTAR CITAS DEL INQUILINO
 const obtenerMisCitas = async (req, res) => {
   try {
     const resultado = await pool.query(
@@ -64,7 +76,10 @@ const obtenerMisCitas = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error al consultar citas:', error.message);
+    console.error(
+      'Error al consultar citas:',
+      error.message
+    );
 
     return res.status(500).json({
       mensaje: 'No se pudieron consultar las citas',
@@ -72,24 +87,35 @@ const obtenerMisCitas = async (req, res) => {
   }
 };
 
-// Crear una cita asociada a un reporte
+// CREAR CITA ASOCIADA A UN REPORTE
 const crearCita = async (req, res) => {
+  const idInquilino = req.usuario.id_inquilino;
   const idReporte = Number(req.body?.id_reporte);
-  const { fecha_cita, hora_cita, observaciones = '' } = req.body || {};
 
-  // Comprobar los campos recibidos
-  if (!Number.isSafeInteger(idReporte) || idReporte <= 0) {
+  const {
+    fecha_cita,
+    hora_cita,
+    observaciones = '',
+  } = req.body || {};
+
+  // VALIDAR IDENTIFICADOR DEL REPORTE
+  if (
+    !Number.isSafeInteger(idReporte) ||
+    idReporte <= 0
+  ) {
     return res.status(400).json({
       mensaje: 'Selecciona un reporte válido',
     });
   }
 
+  // VALIDAR FECHA
   if (!fechaValida(fecha_cita)) {
     return res.status(400).json({
       mensaje: 'La fecha debe tener el formato AAAA-MM-DD',
     });
   }
 
+  // VALIDAR FORMATO DE HORA
   if (
     typeof hora_cita !== 'string' ||
     !/^([01]\d|2[0-3]):[0-5]\d$/.test(hora_cita)
@@ -99,6 +125,7 @@ const crearCita = async (req, res) => {
     });
   }
 
+  // VALIDAR OBSERVACIONES
   if (
     typeof observaciones !== 'string' ||
     observaciones.length > 500
@@ -108,22 +135,37 @@ const crearCita = async (req, res) => {
     });
   }
 
-  if (fecha_cita < obtenerFechaActual()) {
+  // VALIDAR FECHA Y HORA ACTUAL
+  const ahora = obtenerFechaHoraActual();
+
+  if (fecha_cita < ahora.fecha) {
     return res.status(400).json({
       mensaje: 'No puedes programar citas en fechas anteriores',
     });
   }
 
-  // Horario de prueba: 09:00 a 17:00
-  if (hora_cita < '09:00' || hora_cita > '17:00') {
+  // HORARIO PROVISIONAL DE MANTENIMIENTO
+  if (
+    hora_cita < '09:00' ||
+    hora_cita > '17:00'
+  ) {
     return res.status(400).json({
       mensaje: 'Selecciona un horario entre las 09:00 y las 17:00',
     });
   }
 
+  // IMPEDIR HORAS PASADAS PARA EL DÍA ACTUAL
+  if (
+    fecha_cita === ahora.fecha &&
+    hora_cita <= ahora.hora
+  ) {
+    return res.status(400).json({
+      mensaje: 'No puedes solicitar una cita en un horario que ya pasó',
+    });
+  }
+
   try {
-    // Verificar que el reporte pertenece al usuario
-    // y que no está resuelto
+    // COMPROBAR QUE EL REPORTE PERTENECE AL INQUILINO
     const reporte = await pool.query(
       `SELECT r.id_reporte
        FROM reportes r
@@ -132,7 +174,10 @@ const crearCita = async (req, res) => {
        WHERE r.id_reporte = $1
          AND c.id_inquilino = $2
          AND r.estado <> 'resuelto'`,
-      [idReporte, req.usuario.id_inquilino]
+      [
+        idReporte,
+        idInquilino,
+      ]
     );
 
     if (reporte.rows.length === 0) {
@@ -141,7 +186,7 @@ const crearCita = async (req, res) => {
       });
     }
 
-    // Impedir otra cita activa para el mismo reporte
+    // IMPEDIR UNA SEGUNDA CITA ACTIVA PARA EL MISMO REPORTE
     const citaExistente = await pool.query(
       `SELECT id_cita
        FROM citas
@@ -157,7 +202,7 @@ const crearCita = async (req, res) => {
       });
     }
 
-    // Guardar la cita en Neon
+    // GUARDAR LA CITA EN NEON
     const resultado = await pool.query(
       `INSERT INTO citas (
         id_reporte,
@@ -170,8 +215,8 @@ const crearCita = async (req, res) => {
       RETURNING
         id_cita,
         id_reporte,
-        fecha_cita,
-        hora_cita,
+        TO_CHAR(fecha_cita, 'YYYY-MM-DD') AS fecha_cita,
+        TO_CHAR(hora_cita, 'HH24:MI') AS hora_cita,
         estado,
         observaciones`,
       [
@@ -182,20 +227,40 @@ const crearCita = async (req, res) => {
       ]
     );
 
+    const citaCreada = resultado.rows[0];
+
+    // GENERAR NOTIFICACIÓN AUTOMÁTICA
+    // La cita ya quedó almacenada en Neon.
+    await crearNotificacionSegura({
+      idInquilino,
+      titulo: 'Cita de mantenimiento solicitada',
+      mensaje:
+        `Tu solicitud de cita #${citaCreada.id_cita} ` +
+        `para el reporte #${idReporte} fue registrada ` +
+        `para el ${fecha_cita} a las ${hora_cita}. ` +
+        'La visita está pendiente de confirmación.',
+      tipo: 'cita',
+    });
+
+    // RESPONDER A REACT NATIVE
     return res.status(201).json({
       mensaje: 'Solicitud de cita registrada correctamente',
-      cita: resultado.rows[0],
+      cita: citaCreada,
     });
 
   } catch (error) {
-    // Restricción UNIQUE (fecha_cita, hora_cita)
+
+    // HORARIO OCUPADO
     if (error.code === '23505') {
       return res.status(409).json({
         mensaje: 'El horario seleccionado ya está ocupado',
       });
     }
 
-    console.error('Error al crear cita:', error.message);
+    console.error(
+      'Error al crear cita:',
+      error.message
+    );
 
     return res.status(500).json({
       mensaje: 'No se pudo registrar la cita',
