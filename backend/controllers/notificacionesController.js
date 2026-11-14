@@ -7,16 +7,30 @@ const obtenerMisNotificaciones = async (req, res) => {
 
     const resultado = await pool.query(
       `SELECT
-        id_notificacion,
-        titulo,
-        mensaje,
-        tipo,
-        leida,
-        fecha_creacion,
-        fecha_lectura
-       FROM notificaciones
-       WHERE id_inquilino = $1
-       ORDER BY fecha_creacion DESC, id_notificacion DESC`,
+        n.id_notificacion,
+        n.titulo,
+        n.mensaje,
+        n.tipo,
+        n.leida,
+        n.fecha_creacion,
+        n.fecha_lectura,
+        n.accion_tipo,
+        n.id_cita,
+        CASE WHEN n.accion_tipo = 'reagendar_cita'
+               AND ci.reagendado_estado = 'solicitado'
+               AND ci.reagendado_usado_at IS NULL
+               AND ci.estado IN ('programada', 'confirmada')
+             THEN TRUE ELSE FALSE END AS reagendar_disponible
+       FROM notificaciones n
+       LEFT JOIN citas ci ON ci.id_cita = n.id_cita
+         AND EXISTS (
+           SELECT 1 FROM reportes r
+           JOIN contratos c ON c.id_contrato = r.id_contrato
+           WHERE r.id_reporte = ci.id_reporte
+             AND c.id_inquilino = n.id_inquilino
+         )
+       WHERE n.id_inquilino = $1
+       ORDER BY n.fecha_creacion DESC, n.id_notificacion DESC`,
       [idInquilino]
     );
 

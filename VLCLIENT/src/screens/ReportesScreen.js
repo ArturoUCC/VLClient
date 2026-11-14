@@ -87,6 +87,17 @@ export default function ReportesScreen({ navigation, route }) {
     }
   };
 
+  const presentarEstadoCita = (estado) => {
+    switch (String(estado || '').toLowerCase()) {
+      case 'programada':
+        return { texto: 'Pendiente de confirmación', color: '#92400E', fondo: '#FEF3C7' };
+      case 'confirmada':
+        return { texto: 'Confirmada', color: '#166534', fondo: '#DCFCE7' };
+      default:
+        return { texto: estado || 'Sin estado', color: '#475569', fondo: '#F1F5F9' };
+    }
+  };
+
   
 useEffect(() => {
   let activo = true;
@@ -307,6 +318,7 @@ reportes.map((reporte) => {
     citas.find((item) =>
       ['programada', 'confirmada'].includes(item.estado)
     ) || citas[0];
+  const estadoCita = cita ? presentarEstadoCita(cita.estado) : null;
 
   return (
     <View
@@ -419,9 +431,14 @@ reportes.map((reporte) => {
               Hora: {String(cita.hora_cita).slice(0, 5)}
             </Text>
 
-            <Text style={styles.citaDetalle}>
-              Estado: {cita.estado}
-            </Text>
+            <View style={styles.citaEstadoFila}>
+              <Text style={styles.citaDetalle}>Estado:</Text>
+              <View style={[styles.citaEstadoBadge, { backgroundColor: estadoCita.fondo }]}>
+                <Text style={[styles.citaEstadoTexto, { color: estadoCita.color }]}>
+                  {estadoCita.texto}
+                </Text>
+              </View>
+            </View>
 
             {!!cita.observaciones && (
               <Text style={styles.citaDetalle}>
@@ -610,6 +627,23 @@ citaDetalle: {
   fontSize: 13,
   color: '#334155',
   marginBottom: 7,
+},
+
+citaEstadoFila: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  flexWrap: 'wrap',
+  gap: 7,
+},
+citaEstadoBadge: {
+  borderRadius: 12,
+  paddingHorizontal: 9,
+  paddingVertical: 4,
+  marginBottom: 7,
+},
+citaEstadoTexto: {
+  fontSize: 12,
+  fontWeight: 'bold',
 },
 
 });

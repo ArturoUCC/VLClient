@@ -58,6 +58,9 @@ const obtenerMisCitas = async (req, res) => {
          TO_CHAR(ci.fecha_cita, 'YYYY-MM-DD') AS fecha_cita,
          TO_CHAR(ci.hora_cita, 'HH24:MI') AS hora_cita,
          ci.estado,
+         ci.reagendado_estado,
+         ci.reagendado_solicitado_at,
+         ci.reagendado_usado_at,
          ci.observaciones,
          ci.fecha_registro
        FROM citas ci
@@ -84,6 +87,111 @@ const obtenerMisCitas = async (req, res) => {
     return res.status(500).json({
       mensaje: 'No se pudieron consultar las citas',
     });
+  }
+};
+
+// REAGENDAR LA MISMA CITA UNA SOLA VEZ, TRAS LA SOLICITUD ADMINISTRATIVA
+const reagendarCita = async (req, res) => {
+  const idCita = Number(req.params.idCita);
+  const idNotificacion = Number(req.body?.id_notificacion);
+  const { fecha_cita, hora_cita } = req.body || {};
+
+  if (!Number.isSafeInteger(idCita) || idCita <= 0 ||
+      !Number.isSafeInteger(idNotificacion) || idNotificacion <= 0) {
+    return res.status(400).json({ mensaje: 'Identificador de cita o notificación inválido' });
+  }
+  if (!fechaValida(fecha_cita)) {
+    return res.status(400).json({ mensaje: 'La fecha debe tener el formato AAAA-MM-DD' });
+  }
+  if (typeof hora_cita !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(hora_cita)) {
+    return res.status(400).json({ mensaje: 'La hora debe tener el formato HH:MM' });
+  }
+  const ahora = obtenerFechaHoraActual();
+  if (fecha_cita < ahora.fecha ||
+      (fecha_cita === ahora.fecha && hora_cita <= ahora.hora)) {
+    return res.status(400).json({ mensaje: 'Selecciona una fecha y hora futuras' });
+  }
+  if (hora_cita < '09:00' || hora_cita > '17:00') {
+    return res.status(400).json({ mensaje: 'Selecciona un horario entre las 09:00 y las 17:00' });
+  }
+
+  let client;
+  let transaccion = false;
+  try {
+    client = await pool.connect();
+    await client.query('BEGIN');
+    transaccion = true;
+
+    // El bloqueo serializa los intentos simultáneos sobre la misma cita.
+    const resultado = await client.query(
+      `SELECT ci.id_cita, ci.reagendado_estado, ci.reagendado_usado_at,
+              ci.estado, TO_CHAR(ci.fecha_cita, 'YYYY-MM-DD') AS fecha_cita,
+              TO_CHAR(ci.hora_cita, 'HH24:MI') AS hora_cita
+       FROM citas ci
+       JOIN reportes r ON r.id_reporte = ci.id_reporte
+       JOIN contratos c ON c.id_contrato = r.id_contrato
+       JOIN notificaciones n ON n.id_cita = ci.id_cita
+       WHERE ci.id_cita = $1 AND c.id_inquilino = $2
+         AND n.id_notificacion = $3 AND n.id_inquilino = $2
+         AND n.accion_tipo = 'reagendar_cita'
+       FOR UPDATE OF ci`,
+      [idCita, req.usuario.id_inquilino, idNotificacion]
+    );
+
+    if (resultado.rows.length === 0) {
+      await client.query('ROLLBACK');
+      transaccion = false;
+      return res.status(404).json({ mensaje: 'Solicitud de reagendado no encontrada' });
+    }
+
+    const cita = resultado.rows[0];
+    if (cita.reagendado_estado !== 'solicitado' || cita.reagendado_usado_at ||
+        !['programada', 'confirmada'].includes(cita.estado)) {
+      await client.query('ROLLBACK');
+      transaccion = false;
+      return res.status(409).json({ mensaje: 'Esta solicitud de reagendado ya no está disponible' });
+    }
+    if (cita.fecha_cita === fecha_cita && cita.hora_cita === hora_cita) {
+      await client.query('ROLLBACK');
+      transaccion = false;
+      return res.status(400).json({ mensaje: 'Selecciona una fecha u hora diferente' });
+    }
+
+    const actualizada = await client.query(
+      `UPDATE citas
+       SET fecha_cita = $1, hora_cita = $2, estado = 'programada',
+           reagendado_estado = 'utilizado', reagendado_usado_at = NOW()
+       WHERE id_cita = $3 AND reagendado_estado = 'solicitado'
+         AND reagendado_usado_at IS NULL
+       RETURNING id_cita, id_reporte,
+         TO_CHAR(fecha_cita, 'YYYY-MM-DD') AS fecha_cita,
+         TO_CHAR(hora_cita, 'HH24:MI') AS hora_cita,
+         estado, reagendado_estado, reagendado_usado_at`,
+      [fecha_cita, hora_cita, idCita]
+    );
+    if (actualizada.rows.length !== 1) {
+      throw new Error('La cita cambió durante el reagendado');
+    }
+
+    await client.query('COMMIT');
+    transaccion = false;
+    return res.status(200).json({
+      mensaje: 'Cita reagendada; pendiente de confirmación administrativa',
+      cita: actualizada.rows[0],
+    });
+  } catch (error) {
+    if (transaccion) {
+      try { await client.query('ROLLBACK'); } catch (rollbackError) {
+        console.error('Error al revertir reagendado:', rollbackError.message);
+      }
+    }
+    if (error.code === '23505') {
+      return res.status(409).json({ mensaje: 'El horario seleccionado ya está ocupado' });
+    }
+    console.error('Error al reagendar cita:', error.message);
+    return res.status(500).json({ mensaje: 'No se pudo reagendar la cita' });
+  } finally {
+    if (client) client.release();
   }
 };
 
@@ -271,4 +379,5 @@ const crearCita = async (req, res) => {
 module.exports = {
   obtenerMisCitas,
   crearCita,
+  reagendarCita,
 };

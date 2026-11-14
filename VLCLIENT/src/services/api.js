@@ -257,6 +257,23 @@ export const crearCita = async (token, cita) => {
   return data;
 };
 
+export const reagendarCita = async (token, idCita, solicitud) => {
+  const response = await fetch(`${API_URL}/citas/${idCita}/reagendar`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(solicitud),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.mensaje || 'No se pudo reagendar la cita');
+  }
+  return data;
+};
+
 
 export const obtenerMisNotificaciones = async (token) => {
   const response = await fetch(

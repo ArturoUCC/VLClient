@@ -12,6 +12,7 @@ import ReportesScreen from './src/screens/ReportesScreen';
 import NuevoReporteScreen from './src/screens/NuevoReporteScreen';
 import NuevaCitaScreen from './src/screens/NuevaCitaScreen';
 import NotificacionesScreen from './src/screens/NotificacionesScreen';
+import ReagendarCitaScreen from './src/screens/ReagendarCitaScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -77,6 +78,12 @@ export default function App() {
          name="Notificaciones"
          component={NotificacionesScreen}
          options={{ title: 'Mis notificaciones' }}
+        />
+
+        <Stack.Screen
+          name="ReagendarCita"
+          component={ReagendarCitaScreen}
+          options={{ title: 'Reagendar cita' }}
         />
       </Stack.Navigator>
     </NavigationContainer>

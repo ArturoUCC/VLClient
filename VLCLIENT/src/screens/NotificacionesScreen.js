@@ -26,7 +26,7 @@ const iconos = {
   general: 'notifications-outline',
 };
 
-export default function NotificacionesScreen({ route }) {
+export default function NotificacionesScreen({ navigation, route }) {
   const { token } = route.params || {};
 
   const [notificaciones, setNotificaciones] = useState([]);
@@ -143,15 +143,19 @@ export default function NotificacionesScreen({ route }) {
   };
 
   const mostrarNotificacion = ({ item }) => (
-    <TouchableOpacity
+    <View
       style={[
         styles.card,
         !item.leida && styles.cardNueva,
       ]}
-      onPress={() => marcarLeida(item)}
-      activeOpacity={0.8}
-      disabled={procesando}
     >
+      <TouchableOpacity
+        onPress={() => marcarLeida(item)}
+        activeOpacity={0.8}
+        disabled={procesando}
+        accessibilityRole="button"
+        accessibilityLabel={`Marcar notificación ${item.titulo} como leída`}
+      >
       <View style={styles.fila}>
         <View style={styles.iconoContainer}>
           <Ionicons
@@ -187,7 +191,31 @@ export default function NotificacionesScreen({ route }) {
           </Text>
         </View>
       </View>
-    </TouchableOpacity>
+      </TouchableOpacity>
+
+      {item.accion_tipo === 'reagendar_cita' && (
+        <TouchableOpacity
+          style={[
+            styles.accionBoton,
+            !item.reagendar_disponible && styles.accionDeshabilitada,
+          ]}
+          disabled={!item.reagendar_disponible || procesando}
+          onPress={() => navigation.navigate('ReagendarCita', {
+            token,
+            idCita: item.id_cita,
+            idNotificacion: item.id_notificacion,
+          })}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: !item.reagendar_disponible }}
+          accessibilityLabel="Reagendar cita"
+        >
+          <Ionicons name="calendar-outline" size={18} color="#FFFFFF" />
+          <Text style={styles.accionTexto}>
+            {item.reagendar_disponible ? 'Reagendar cita' : 'Reagendado no disponible'}
+          </Text>
+        </TouchableOpacity>
+      )}
+    </View>
   );
 
   return (
@@ -383,6 +411,23 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#23558C',
     marginTop: 7,
+  },
+  accionBoton: {
+    marginTop: 15,
+    minHeight: 44,
+    backgroundColor: '#23558C',
+    borderRadius: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  accionDeshabilitada: {
+    backgroundColor: '#94A3B8',
+  },
+  accionTexto: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
   },
   vacio: {
     alignItems: 'center',
