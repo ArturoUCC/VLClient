@@ -10,6 +10,18 @@ node_modules/
 **/.env.*
 !**/.env.example
 
+# Claves privadas de Firebase, EAS y cuentas de servicio
+*service-account*.json
+*firebase-adminsdk*.json
+*credentials*.json
+*private-key*.json
+*.pem
+*.p8
+*.p12
+*.key
+*.jks
+*.mobileprovision
+
 # Expo
 .expo/
 dist/

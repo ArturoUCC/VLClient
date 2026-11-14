@@ -43,7 +43,8 @@ const verificarToken = async (req, res, next) => {
 
     req.usuario = {
       id_inquilino: datos.id_inquilino,
-      rol: datos.rol
+      rol: datos.rol,
+      sesion_version: datos.sesion_version
     };
 
     next();

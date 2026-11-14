@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useContext } from 'react';
 import {
   View,
   Text,
@@ -13,8 +13,16 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { obtenerMiPerfil, actualizarRecordatorioRenta } from '../services/api';
+import {
+  desactivarPushAlSalir,
+  registrarPushTrasLogin,
+  leerPreferenciaPush,
+  guardarPreferenciaPush,
+} from '../services/pushDispositivo';
+import { SesionContext } from '../context/SesionContext';
 
 export default function PerfilScreen({ navigation, route }) {
+  const { terminarSesion } = useContext(SesionContext);
   const [notificaciones, setNotificaciones] = useState(true);
   const [perfil, setPerfil] = useState(null);
   const [cargando, setCargando] = useState(true);
@@ -22,6 +30,8 @@ export default function PerfilScreen({ navigation, route }) {
   const [error, setError] = useState('');
   const [diasRecordatorio, setDiasRecordatorio] = useState(null);
   const [guardandoRecordatorio, setGuardandoRecordatorio] = useState(false);
+  const [cerrandoSesion, setCerrandoSesion] = useState(false);
+  const [cambiandoPush, setCambiandoPush] = useState(false);
 
   // Token recibido desde la pantalla Inicio
   const token = route.params?.token;
@@ -51,6 +61,41 @@ export default function PerfilScreen({ navigation, route }) {
   useEffect(() => {
     cargarPerfil();
   }, [cargarPerfil]);
+
+  useEffect(() => {
+    void leerPreferenciaPush().then(setNotificaciones).catch(() => {});
+  }, []);
+
+  const cambiarPush = async (habilitar) => {
+    if (cambiandoPush) return;
+    setCambiandoPush(true);
+    try {
+      if (habilitar) {
+        await guardarPreferenciaPush(true);
+        setNotificaciones(true);
+        const resultado = await registrarPushTrasLogin(token);
+        if (resultado === 'sin_permiso') {
+          await guardarPreferenciaPush(false);
+          setNotificaciones(false);
+          Alert.alert('Permiso denegado',
+            'Activa las notificaciones para VLClient en los ajustes del dispositivo.');
+        } else if (resultado === 'no_disponible') {
+          Alert.alert('Push no disponible',
+            'Los avisos remotos requieren una compilación compatible y la configuración Expo/EAS.');
+        }
+      } else {
+        await desactivarPushAlSalir(token);
+        await guardarPreferenciaPush(false);
+        setNotificaciones(false);
+      }
+    } catch (_) {
+      Alert.alert('No se pudo actualizar', habilitar
+        ? 'No se pudo registrar este dispositivo. Se reintentará al volver a iniciar sesión.'
+        : 'No se pudo desactivar este dispositivo. Revisa la conexión e inténtalo de nuevo.');
+    } finally {
+      setCambiandoPush(false);
+    }
+  };
 
   const actualizar = () => {
     setActualizando(true);
@@ -116,6 +161,7 @@ export default function PerfilScreen({ navigation, route }) {
   };
 
   const cerrarSesion = () => {
+    if (cerrandoSesion) return;
     Alert.alert(
       'Cerrar sesión',
       '¿Estás seguro de que deseas cerrar sesión?',
@@ -124,11 +170,22 @@ export default function PerfilScreen({ navigation, route }) {
         {
           text: 'Cerrar sesión',
           style: 'destructive',
-          onPress: () =>
-            navigation.reset({
-              index: 0,
-              routes: [{ name: 'Bienvenida' }],
-            }),
+          onPress: async () => {
+            setCerrandoSesion(true);
+            try {
+              await desactivarPushAlSalir(token);
+              terminarSesion();
+              navigation.reset({
+                index: 0,
+                routes: [{ name: 'Bienvenida' }],
+              });
+            } catch (_) {
+              Alert.alert('No se pudo cerrar sesión',
+                'No se pudo desactivar este dispositivo. Revisa la conexión e inténtalo de nuevo.');
+            } finally {
+              setCerrandoSesion(false);
+            }
+          },
         },
       ]
     );
@@ -303,12 +360,13 @@ export default function PerfilScreen({ navigation, route }) {
                 />
 
                 <Text style={styles.optionText}>
-                  Notificaciones
+                  Avisos push
                 </Text>
 
                 <Switch
                   value={notificaciones}
-                  onValueChange={setNotificaciones}
+                  onValueChange={cambiarPush}
+                  disabled={cambiandoPush}
                   trackColor={{
                     false: '#CBD5E1',
                     true: '#A3C9E8',
@@ -372,6 +430,7 @@ export default function PerfilScreen({ navigation, route }) {
             <TouchableOpacity
               style={styles.logoutButton}
               onPress={cerrarSesion}
+              disabled={cerrandoSesion}
             >
               <Ionicons
                 name="log-out-outline"

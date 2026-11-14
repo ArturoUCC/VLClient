@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+import { observarRotacionPush } from '../services/pushDispositivo';
 import {
   obtenerMiEstadoCuenta,
   obtenerMisReportes,
@@ -20,6 +21,7 @@ import {
 
 export default function InicioScreen({ navigation, route }) {
   const { token, inquilino } = route.params || {};
+  useEffect(() => observarRotacionPush(token), [token]);
   const [notificacionesNoLeidas, setNotificacionesNoLeidas] = useState(0);
 
   // Estado de cuenta

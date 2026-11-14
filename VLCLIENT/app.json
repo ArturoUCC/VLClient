@@ -23,7 +23,15 @@
     "plugins": [
       "expo-status-bar",
       "expo-font",
-      "@react-native-community/datetimepicker"
-    ]
+      "@react-native-community/datetimepicker",
+      "expo-secure-store",
+      "expo-notifications"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "adb5f587-2df0-49f7-9b40-c04c6bd4944e"
+      }
+    },
+    "owner": "arturop"
   }
 }

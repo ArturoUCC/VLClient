@@ -1,5 +1,7 @@
 # Backend de VLClient
 
+El registro de dispositivos y los comandos manuales de envío push están documentados en [PUSH.md](../PUSH.md). El procesamiento push automático aún no está activado.
+
 API Express de VLClient. El proceso web se inicia con `npm start`; los recordatorios de renta se ejecutan mediante un proceso Node independiente.
 
 ## Recordatorios de renta y automatización futura

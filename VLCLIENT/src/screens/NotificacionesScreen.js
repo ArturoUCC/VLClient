@@ -28,6 +28,7 @@ const iconos = {
 
 export default function NotificacionesScreen({ navigation, route }) {
   const { token } = route.params || {};
+  const idSeleccionado = Number(route.params?.idNotificacionSeleccionada);
 
   const [notificaciones, setNotificaciones] = useState([]);
   const [cargando, setCargando] = useState(true);
@@ -63,7 +64,7 @@ export default function NotificacionesScreen({ navigation, route }) {
   useFocusEffect(
     useCallback(() => {
       cargarNotificaciones();
-    }, [cargarNotificaciones])
+    }, [cargarNotificaciones, idSeleccionado])
   );
 
   const marcarLeida = async (notificacion) => {
@@ -123,6 +124,13 @@ export default function NotificacionesScreen({ navigation, route }) {
   const noLeidas = notificaciones.filter(
     (item) => !item.leida
   ).length;
+  // La referencia ya se comprobó en la API antes de navegar. La lista vuelve
+  // a consultar Neon y coloca el aviso seleccionado al principio si sigue visible.
+  const visibles = Number.isSafeInteger(idSeleccionado) && idSeleccionado > 0
+    ? [...notificaciones].sort((a, b) =>
+      Number(Number(b.id_notificacion) === idSeleccionado) -
+      Number(Number(a.id_notificacion) === idSeleccionado))
+    : notificaciones;
 
   const formatearFecha = (valor) => {
     if (!valor) return '';
@@ -147,6 +155,7 @@ export default function NotificacionesScreen({ navigation, route }) {
       style={[
         styles.card,
         !item.leida && styles.cardNueva,
+        Number(item.id_notificacion) === idSeleccionado && styles.cardSeleccionada,
       ]}
     >
       <TouchableOpacity
@@ -224,7 +233,7 @@ export default function NotificacionesScreen({ navigation, route }) {
       edges={['bottom']}
     >
       <FlatList
-        data={notificaciones}
+        data={visibles}
         keyExtractor={(item) =>
           String(item.id_notificacion)
         }
@@ -362,6 +371,10 @@ const styles = StyleSheet.create({
   cardNueva: {
     backgroundColor: '#EAF2F9',
     borderColor: '#B5D0E9',
+  },
+  cardSeleccionada: {
+    borderColor: '#23558C',
+    borderWidth: 2,
   },
   fila: {
     flexDirection: 'row',

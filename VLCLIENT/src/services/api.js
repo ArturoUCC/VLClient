@@ -25,6 +25,31 @@ export const loginInquilino = async (correo, password) => {
   return data;
 };
 
+// El servidor toma el propietario del JWT; nunca se envía id_inquilino.
+export const registrarDispositivoPush = async (token, dispositivo) => {
+  const response = await fetch(`${API_URL}/push/dispositivos`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(dispositivo),
+  });
+  if (!response.ok) {
+    throw new Error('No se pudo registrar este dispositivo para avisos push.');
+  }
+};
+
+export const desactivarDispositivoPush = async (token, instalacionId) => {
+  const response = await fetch(
+    `${API_URL}/push/dispositivos/${encodeURIComponent(instalacionId)}`,
+    { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }
+  );
+  if (!response.ok) {
+    throw new Error('No se pudo desactivar este dispositivo para avisos push.');
+  }
+};
+
 // Solicitar un enlace de recuperación sin revelar si el correo está registrado.
 export const solicitarRecuperacionPassword = async (correo) => {
   const response = await fetch(`${API_URL}/auth/solicitar-recuperacion`, {

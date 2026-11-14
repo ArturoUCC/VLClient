@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useContext, useState } from 'react';
 import {
   View,
   Text,
@@ -14,8 +14,11 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { loginInquilino } from '../services/api';
+import { registrarPushTrasLogin } from '../services/pushDispositivo';
+import { SesionContext } from '../context/SesionContext';
 
 export default function LoginScreen({ navigation }) {
+  const { activarSesion } = useContext(SesionContext);
   const [correo, setCorreo] = useState('');
   const [password, setPassword] = useState('');
   const [mostrarPassword, setMostrarPassword] = useState(false);
@@ -51,8 +54,16 @@ const iniciarSesion = async () => {
       password
     );
 
+    // Una falla push no impide iniciar sesión ni revela el token en registros.
+    try {
+      await registrarPushTrasLogin(respuesta.token);
+    } catch (_) {
+      // Se reintentará al iniciar sesión nuevamente.
+    }
+
     // El token se pasa temporalmente por navegación.
     // Después implementaremos su almacenamiento seguro.
+    activarSesion(respuesta.token);
     navigation.replace('Inicio', {
       token: respuesta.token,
       inquilino: respuesta.inquilino
