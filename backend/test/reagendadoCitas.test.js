@@ -8,12 +8,24 @@ let desbloquear;
 let actualizaciones;
 let horarioOcupado;
 let consultaBloqueo;
+let notificaciones;
+let fallaAviso;
 
 const pool = {
-  connect: async () => ({
+  connect: async () => {
+    let cambioPendiente;
+    let avisoPendiente;
+    return {
     async query(sql, params = []) {
       if (sql === 'BEGIN') return { rows: [] };
       if (sql === 'COMMIT' || sql === 'ROLLBACK') {
+        if (sql === 'COMMIT' && cambioPendiente) {
+          cita = cambioPendiente;
+          actualizaciones++;
+          notificaciones.push(avisoPendiente);
+        }
+        cambioPendiente = undefined;
+        avisoPendiente = undefined;
         if (bloqueada) {
           bloqueada = false;
           desbloquear?.();
@@ -35,18 +47,23 @@ const pool = {
           error.code = '23505';
           throw error;
         }
-        actualizaciones++;
-        cita = {
+        cambioPendiente = {
           ...cita, fecha_cita: params[0], hora_cita: params[1],
           estado: 'programada', reagendado_estado: 'utilizado',
           reagendado_usado_at: new Date(),
         };
-        return { rows: [{ ...cita }] };
+        return { rows: [{ ...cambioPendiente }] };
+      }
+      if (sql.includes('INSERT INTO notificaciones')) {
+        if (fallaAviso) throw new Error('Fallo de inserción simulado');
+        avisoPendiente = { sql, params };
+        return { rows: [], rowCount: 1 };
       }
       throw new Error('Consulta inesperada');
     },
     release() {},
-  }),
+  };
+  },
 };
 
 const originalLoad = Module._load;
@@ -83,6 +100,8 @@ const reiniciar = () => {
   actualizaciones = 0;
   horarioOcupado = false;
   bloqueada = false;
+  notificaciones = [];
+  fallaAviso = false;
 };
 
 test('solo el inquilino propietario con la notificación vinculada puede reagendar', async () => {
@@ -105,6 +124,14 @@ test('solo el inquilino propietario con la notificación vinculada puede reagend
   assert.equal(valido.body.cita.estado, 'programada');
   assert.equal(valido.body.cita.reagendado_estado, 'utilizado');
   assert.equal(actualizaciones, 1);
+  assert.equal(notificaciones.length, 1);
+  assert.deepEqual(notificaciones[0].params, [
+    1,
+    'Cita reagendada correctamente',
+    'Tu cita #6 fue reagendada para el 2099-05-20 a las 10:00. ' +
+      'El nuevo horario está pendiente de confirmación administrativa.',
+  ]);
+  assert.match(notificaciones[0].sql, /'cita', NULL, NULL/);
 });
 
 test('dos solicitudes simultáneas solo actualizan la cita una vez', async () => {
@@ -117,6 +144,7 @@ test('dos solicitudes simultáneas solo actualizan la cita una vez', async () =>
   ]);
   assert.deepEqual([primera.statusCode, segunda.statusCode].sort(), [200, 409]);
   assert.equal(actualizaciones, 1);
+  assert.equal(notificaciones.length, 1);
 });
 
 test('la notificación antigua no permite un segundo cambio', async () => {
@@ -127,6 +155,7 @@ test('la notificación antigua no permite un segundo cambio', async () => {
   await reagendarCita(solicitud(), segunda);
   assert.equal(segunda.statusCode, 409);
   assert.equal(actualizaciones, 1);
+  assert.equal(notificaciones.length, 1);
 });
 
 test('un horario ocupado revierte el reagendado', async () => {
@@ -137,6 +166,19 @@ test('un horario ocupado revierte el reagendado', async () => {
   assert.equal(res.statusCode, 409);
   assert.equal(cita.reagendado_estado, 'solicitado');
   assert.equal(actualizaciones, 0);
+  assert.equal(notificaciones.length, 0);
+});
+
+test('si falla el aviso se revierte también el cambio de horario', async () => {
+  reiniciar();
+  fallaAviso = true;
+  const res = respuesta();
+  await reagendarCita(solicitud(), res);
+  assert.equal(res.statusCode, 500);
+  assert.equal(cita.fecha_cita, '2099-05-19');
+  assert.equal(cita.reagendado_estado, 'solicitado');
+  assert.equal(actualizaciones, 0);
+  assert.equal(notificaciones.length, 0);
 });
 
 test('rechaza fecha inválida, horario pasado y cita sin solicitud', async () => {

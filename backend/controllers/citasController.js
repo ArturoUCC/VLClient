@@ -173,6 +173,19 @@ const reagendarCita = async (req, res) => {
       throw new Error('La cita cambió durante el reagendado');
     }
 
+    // El aviso y la nueva fecha se confirman o revierten juntos.
+    await client.query(
+      `INSERT INTO notificaciones
+         (id_inquilino, titulo, mensaje, tipo, accion_tipo, id_cita)
+       VALUES ($1, $2, $3, 'cita', NULL, NULL)`,
+      [
+        req.usuario.id_inquilino,
+        'Cita reagendada correctamente',
+        `Tu cita #${idCita} fue reagendada para el ${fecha_cita} a las ${hora_cita}. ` +
+          'El nuevo horario está pendiente de confirmación administrativa.',
+      ]
+    );
+
     await client.query('COMMIT');
     transaccion = false;
     return res.status(200).json({
