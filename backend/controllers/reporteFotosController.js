@@ -1,5 +1,7 @@
 const pool = require('../config/db');
 const cloudinary = require('../config/cloudinary');
+const path = require('node:path');
+const { imagenValida } = require('../utils/validarImagen');
 
 // Subir una imagen a Cloudinary desde memoria
 const subirImagen = (archivo, idReporte) => {
@@ -44,6 +46,10 @@ const subirFotosReporte = async (req, res) => {
     return res.status(400).json({
       mensaje: 'Debes seleccionar entre 1 y 5 fotografías',
     });
+  }
+
+  if (archivos.some((archivo) => !imagenValida(archivo))) {
+    return res.status(400).json({ mensaje: 'Una fotografía tiene un formato inválido' });
   }
 
   const imagenesSubidas = [];
@@ -113,7 +119,7 @@ const subirFotosReporte = async (req, res) => {
         [
           idReporte,
           imagenesSubidas[i].secure_url,
-          archivos[i].originalname,
+          path.basename(archivos[i].originalname || 'fotografia').slice(0, 150),
         ]
       );
 

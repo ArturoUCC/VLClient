@@ -3,7 +3,7 @@ import { NavigationContainer, useNavigationContainerRef } from '@react-navigatio
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import * as Notifications from 'expo-notifications';
 import { SesionContext } from './src/context/SesionContext';
-import { obtenerMisNotificaciones } from './src/services/api';
+import { obtenerMisNotificaciones, configurarManejadorSesionExpirada } from './src/services/api';
 import {
   extraerIdNotificacion,
   claveInteraccion,
@@ -18,6 +18,7 @@ import PerfilScreen from './src/screens/PerfilScreen';
 import PagosScreen from './src/screens/PagosScreen';
 import ReportesScreen from './src/screens/ReportesScreen';
 import NuevoReporteScreen from './src/screens/NuevoReporteScreen';
+import BorradoresReporteScreen from './src/screens/BorradoresReporteScreen';
 import NuevaCitaScreen from './src/screens/NuevaCitaScreen';
 import NotificacionesScreen from './src/screens/NotificacionesScreen';
 import ReagendarCitaScreen from './src/screens/ReagendarCitaScreen';
@@ -111,9 +112,20 @@ export default function App() {
   const terminarSesion = useCallback(() => {
     tokenRef.current = null;
     pendienteRef.current = null;
+    interaccionesRef.current.clear();
     setSesionToken(null);
     void Notifications.clearLastNotificationResponseAsync().catch(() => {});
   }, []);
+  useEffect(() => {
+    configurarManejadorSesionExpirada((token) => {
+      if (tokenRef.current !== token) return;
+      terminarSesion();
+      if (navigationRef.isReady()) {
+        navigationRef.resetRoot({ index: 0, routes: [{ name: 'Login' }] });
+      }
+    });
+    return () => configurarManejadorSesionExpirada(null);
+  }, [navigationRef, terminarSesion]);
   const sesion = useMemo(() => ({ activarSesion, terminarSesion }),
     [activarSesion, terminarSesion]);
 
@@ -169,6 +181,9 @@ export default function App() {
          component={NuevoReporteScreen}
          options={{ title: 'Nuevo reporte' }}
         />
+
+        <Stack.Screen name="BorradoresReporte" component={BorradoresReporteScreen}
+          options={{ title: 'Borradores de mantenimiento' }} />
 
         <Stack.Screen
          name="NuevaCita"

@@ -23,6 +23,7 @@ import {
 
 export default function ReportesScreen({ navigation, route }) {
   const token = route.params?.token;
+  const idInquilino = route.params?.idInquilino;
 
   const [reportes, setReportes] = useState([]);
   const [cargando, setCargando] = useState(true);
@@ -254,7 +255,7 @@ const formatearFechaCita = (fecha) => {
 
         <TouchableOpacity
           style={styles.createButton}
-          onPress={() => navigation.navigate('NuevoReporte', { token })}
+          onPress={() => navigation.navigate('NuevoReporte', { token, idInquilino })}
         >
           <Ionicons
             name="add-circle-outline"
@@ -264,6 +265,11 @@ const formatearFechaCita = (fecha) => {
           <Text style={styles.createText}>
             Crear nuevo reporte
           </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.createButton}
+          onPress={() => navigation.navigate('BorradoresReporte', { token, idInquilino })}>
+          <Text style={styles.createText}>Ver borradores guardados</Text>
         </TouchableOpacity>
 
         {cargando ? (

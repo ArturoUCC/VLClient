@@ -8,6 +8,7 @@ const TITULO = 'Vives Lara';
 const CUERPO = 'Tienes una nueva notificación. Abre VLClient para consultarla.';
 const TRANSITORIOS = new Set(['TOO_MANY_REQUESTS', 'MessageRateExceeded']);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const envioRemotoHabilitado = (valor) => valor === 'true';
 
 const comprobarProyecto = (projectId) => {
   if (!projectId || !UUID.test(projectId)) {
@@ -429,6 +430,11 @@ if (require.main === module) {
     console.error('Uso: node jobs/procesarNotificacionesPush.js --dry-run|--procesar|--recibos');
     process.exitCode = 2;
     void pool.end();
+  } else if (modo === '--procesar' &&
+             !envioRemotoHabilitado(process.env.PUSH_REMOTE_ENABLED)) {
+    console.error('El envío push remoto está desactivado para esta versión');
+    process.exitCode = 2;
+    void pool.end();
   } else {
     const trabajo = modo === '--dry-run' ? simularPush :
       modo === '--procesar' ? procesarPendientes : procesarRecibos;
@@ -444,4 +450,4 @@ if (require.main === module) {
 module.exports = { simularPush, distribuirLote, distribuirPendientes,
   reservarEnvios, enviarPendientes, reservarRecibos, procesarRecibos,
   procesarPendientes, revalidarEnvios, finalizarEnvio, finalizarRecibo,
-  TAM_LOTE, MAX_INTENTOS };
+  TAM_LOTE, MAX_INTENTOS, envioRemotoHabilitado };

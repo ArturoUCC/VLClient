@@ -18,8 +18,10 @@ import {
   registrarPushTrasLogin,
   leerPreferenciaPush,
   guardarPreferenciaPush,
+  pushRemotoHabilitado,
 } from '../services/pushDispositivo';
 import { SesionContext } from '../context/SesionContext';
+import { cerrarSesionLocal } from '../services/cierreSesion';
 
 export default function PerfilScreen({ navigation, route }) {
   const { terminarSesion } = useContext(SesionContext);
@@ -63,11 +65,13 @@ export default function PerfilScreen({ navigation, route }) {
   }, [cargarPerfil]);
 
   useEffect(() => {
-    void leerPreferenciaPush().then(setNotificaciones).catch(() => {});
+    if (pushRemotoHabilitado) {
+      void leerPreferenciaPush().then(setNotificaciones).catch(() => {});
+    }
   }, []);
 
   const cambiarPush = async (habilitar) => {
-    if (cambiandoPush) return;
+    if (!pushRemotoHabilitado || cambiandoPush) return;
     setCambiandoPush(true);
     try {
       if (habilitar) {
@@ -172,19 +176,13 @@ export default function PerfilScreen({ navigation, route }) {
           style: 'destructive',
           onPress: async () => {
             setCerrandoSesion(true);
-            try {
-              await desactivarPushAlSalir(token);
-              terminarSesion();
-              navigation.reset({
+            // El cierre local nunca depende de la red ni de la API push.
+            cerrarSesionLocal(token, desactivarPushAlSalir, terminarSesion,
+              () => navigation.reset({
                 index: 0,
                 routes: [{ name: 'Bienvenida' }],
-              });
-            } catch (_) {
-              Alert.alert('No se pudo cerrar sesión',
-                'No se pudo desactivar este dispositivo. Revisa la conexión e inténtalo de nuevo.');
-            } finally {
-              setCerrandoSesion(false);
-            }
+              }));
+            setCerrandoSesion(false);
           },
         },
       ]
@@ -343,7 +341,7 @@ export default function PerfilScreen({ navigation, route }) {
                   color="#23558C"
                 />
                 <Text style={styles.optionText}>
-                  Cambiar contraseña
+                  Cambiar contraseña (próximamente)
                 </Text>
                 <Ionicons
                   name="chevron-forward"
@@ -360,10 +358,12 @@ export default function PerfilScreen({ navigation, route }) {
                 />
 
                 <Text style={styles.optionText}>
-                  Avisos push
+                  {pushRemotoHabilitado
+                    ? 'Avisos push remotos'
+                    : 'Avisos push remotos (futura actualización)'}
                 </Text>
 
-                <Switch
+                {pushRemotoHabilitado && <Switch
                   value={notificaciones}
                   onValueChange={cambiarPush}
                   disabled={cambiandoPush}
@@ -374,8 +374,12 @@ export default function PerfilScreen({ navigation, route }) {
                   thumbColor={
                     notificaciones ? '#23558C' : '#F1F5F9'
                   }
-                />
+                />}
               </View>
+
+              {!pushRemotoHabilitado && <Text style={styles.recordatorioAyuda}>
+                Tus notificaciones dentro de VLClient siguen disponibles.
+              </Text>}
 
               {perfil && (
                 <View style={styles.recordatorioContainer}>

@@ -1,8 +1,18 @@
 # Backend de VLClient
 
-El registro de dispositivos y los comandos manuales de envío push están documentados en [PUSH.md](../PUSH.md). El procesamiento push automático aún no está activado.
+El registro de dispositivos y los comandos manuales de envío push están documentados en [PUSH.md](../PUSH.md). Para la primera versión, el envío remoto queda desactivado **en el código local**: el comando `--procesar` exige `PUSH_REMOTE_ENABLED=true`, que no debe configurarse hasta terminar las pruebas nativas y aprobar la activación. Este cambio no afecta todavía a la versión desplegada en Render. Las notificaciones internas siguen funcionando. No hay procesamiento automático ni Cron Job activo.
 
 API Express de VLClient. El proceso web se inicia con `npm start`; los recordatorios de renta se ejecutan mediante un proceso Node independiente.
+
+## Seguridad y borradores de reportes
+
+El login limita intentos por IP y correo mediante la tabla existente `limites_recuperacion_password`. Las claves se guardan como HMAC usando `RECOVERY_RATE_LIMIT_SECRET`, que debe seguir configurado en Render; no se registra el correo en esa tabla. El límite se comparte entre instancias y reinicios. El JWT conserva su duración actual y la app vuelve a login ante un 401 autenticado. La baja push al cerrar sesión es de mejor esfuerzo: el procesador vuelve a comprobar `push_dispositivos.activo` y `sesion_version_registro` antes de enviar. Si un cierre sin conexión no llega al backend y la versión de sesión sigue vigente, el dispositivo puede continuar siendo elegible; esta limitación requiere una estrategia de revocación por instalación antes de ofrecer push en producción.
+
+La API móvil nativa no necesita CORS. La página de recuperación usa el mismo origen; se retiró el CORS abierto y el diagnóstico público `/api/db-test`. Los archivos de reporte se comprueban por firma básica antes de enviarse a Cloudinary. Esto no sustituye la decodificación completa de imágenes. Las `secure_url` actuales de Cloudinary son enlaces públicos: la API protege la consulta de la URL, pero quien posea un enlace puede abrir la foto directamente. Revisar esta decisión de privacidad con la inmobiliaria.
+
+La migración [sql/migrar_idempotencia_reportes.sql](sql/migrar_idempotencia_reportes.sql) ya fue ejecutada y verificada manualmente en Neon según los resultados del Sprint 5. `POST /api/reportes/crear` admite opcionalmente `clave_idempotencia` para conservar clientes anteriores. `POST /api/reporte-fotos/:idReporte/sincronizar` recibe una fotografía con su propia clave. Ambos verifican el inquilino del JWT y rechazan claves reutilizadas con datos incompatibles. `GET /api/reportes/capacidades` requiere JWT y permite que la app compruebe que ambos pasos están disponibles antes de enviar. El flujo local de sincronización requiere aún despliegue y prueba en Expo Go; no se ejecutó SQL ni se enviaron datos reales en esta implementación.
+
+`npm audit --omit=dev` no reporta vulnerabilidades de producción tras resolver `body-parser@2.4.0`. La auditoría completa del backend aún muestra un aviso moderado en la cadena de `nodemon`, usada para desarrollo. La app móvil mantiene cinco avisos moderados en dependencias transitivas de Expo y `@expo/ngrok`; no se aplicó `npm audit fix --force` porque propone cambiar de SDK. Revisar nuevas versiones compatibles antes de la entrega.
 
 ## Recordatorios de renta y automatización futura
 

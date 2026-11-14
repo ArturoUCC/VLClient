@@ -27,7 +27,8 @@ const obtenerMiEstadoCuenta = async (req, res) => {
       WHERE i.id_inquilino = $1
         AND i.activo = TRUE
         AND c.estado = 'activo'
-        AND CURRENT_DATE BETWEEN c.fecha_inicio AND c.fecha_fin
+        AND (NOW() AT TIME ZONE 'America/Mexico_City')::date
+            BETWEEN c.fecha_inicio AND c.fecha_fin
       ORDER BY ec.mes DESC
       LIMIT 1`,
       [idInquilino]

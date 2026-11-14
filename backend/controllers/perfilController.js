@@ -26,7 +26,8 @@ const obtenerMiPerfil = async (req, res) => {
         FROM contratos
         WHERE id_inquilino = i.id_inquilino
           AND estado = 'activo'
-          AND CURRENT_DATE BETWEEN fecha_inicio AND fecha_fin
+          AND (NOW() AT TIME ZONE 'America/Mexico_City')::date
+              BETWEEN fecha_inicio AND fecha_fin
         ORDER BY fecha_inicio DESC
         LIMIT 1
       ) c ON TRUE

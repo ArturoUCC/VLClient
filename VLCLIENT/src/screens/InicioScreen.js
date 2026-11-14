@@ -8,11 +8,14 @@ import {
   Alert,
   ActivityIndicator,
   RefreshControl,
+  AppState,
 } from 'react-native';
+import * as Network from 'expo-network';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
-import { observarRotacionPush } from '../services/pushDispositivo';
+import { observarRotacionPush, pushRemotoHabilitado } from '../services/pushDispositivo';
+import { sincronizarBorradores } from '../services/sincronizarReportes';
 import {
   obtenerMiEstadoCuenta,
   obtenerMisReportes,
@@ -21,7 +24,8 @@ import {
 
 export default function InicioScreen({ navigation, route }) {
   const { token, inquilino } = route.params || {};
-  useEffect(() => observarRotacionPush(token), [token]);
+  useEffect(() => pushRemotoHabilitado ? observarRotacionPush(token) : undefined,
+    [token]);
   const [notificacionesNoLeidas, setNotificacionesNoLeidas] = useState(0);
 
   // Estado de cuenta
@@ -142,6 +146,25 @@ export default function InicioScreen({ navigation, route }) {
       }
     }
   }, [cargarEstadoCuenta, cargarReportes, cargarResumenNotificaciones]);
+
+  useEffect(() => {
+    const idInquilino = inquilino?.id_inquilino;
+    if (!token || !idInquilino) return;
+    const intentar = () => {
+      void sincronizarBorradores(token, idInquilino)
+        .then((resultado) => {
+          if (resultado.enviados > 0) void cargarDatos();
+        }).catch(() => {});
+    };
+    intentar();
+    const red = Network.addNetworkStateListener((estado) => {
+      if (estado.isConnected && estado.isInternetReachable !== false) intentar();
+    });
+    const app = AppState.addEventListener('change', (estado) => {
+      if (estado === 'active') intentar();
+    });
+    return () => { red.remove(); app.remove(); };
+  }, [token, inquilino?.id_inquilino, cargarDatos]);
 
   // ACTUALIZAR AL VOLVER A INICIO
   useFocusEffect(
@@ -279,7 +302,7 @@ export default function InicioScreen({ navigation, route }) {
 
   // NAVEGACIÓN
   const abrirReportes = () => {
-    navigation.navigate('Reportes', { token });
+    navigation.navigate('Reportes', { token, idInquilino: inquilino?.id_inquilino });
   };
 
   const abrirPerfil = () => {
@@ -552,7 +575,9 @@ export default function InicioScreen({ navigation, route }) {
 
               <TouchableOpacity
                 onPress={() =>
-                  navigation.navigate('NuevoReporte', { token })
+                  navigation.navigate('NuevoReporte', {
+                    token, idInquilino: inquilino?.id_inquilino,
+                  })
                 }
               >
                 <Text style={styles.reintentarReportes}>

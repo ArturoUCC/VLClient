@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const { claveValida } = require('../utils/idempotencia');
 
 const {
   crearNotificacionSegura,
@@ -45,7 +46,12 @@ const crearReporte = async (req, res) => {
       titulo,
       descripcion,
       categoria,
+      clave_idempotencia: claveIdempotencia,
     } = req.body || {};
+
+    if (claveIdempotencia !== undefined && !claveValida(claveIdempotencia)) {
+      return res.status(400).json({ mensaje: 'Clave de solicitud inválida' });
+    }
 
     // VALIDAR CAMPOS OBLIGATORIOS
     if (
@@ -97,7 +103,8 @@ const crearReporte = async (req, res) => {
         descripcion,
         categoria,
         prioridad,
-        estado
+        estado,
+        clave_idempotencia
       )
       SELECT
         c.id_contrato,
@@ -105,24 +112,51 @@ const crearReporte = async (req, res) => {
         $3,
         $4,
         'media',
-        'pendiente'
+        'pendiente',
+        $5
       FROM contratos c
       WHERE c.id_inquilino = $1
         AND c.estado = 'activo'
-        AND CURRENT_DATE BETWEEN c.fecha_inicio AND c.fecha_fin
+        AND (NOW() AT TIME ZONE 'America/Mexico_City')::date
+            BETWEEN c.fecha_inicio AND c.fecha_fin
       ORDER BY c.fecha_inicio DESC
       LIMIT 1
+      ON CONFLICT (clave_idempotencia)
+        WHERE clave_idempotencia IS NOT NULL DO NOTHING
       RETURNING *`,
       [
         idInquilino,
         tituloLimpio,
         descripcionLimpia,
         categoria,
+        claveIdempotencia || null,
       ]
     );
 
-    // VERIFICAR QUE EXISTA UN CONTRATO ACTIVO
+    // Un reintento espera al INSERT concurrente por el índice único y
+    // consulta el resultado ya confirmado, sin crear otra notificación.
     if (resultado.rows.length === 0) {
+      if (claveIdempotencia) {
+        const existente = await pool.query(
+          `SELECT r.*, c.id_inquilino AS propietario
+           FROM reportes r
+           JOIN contratos c ON c.id_contrato = r.id_contrato
+           WHERE r.clave_idempotencia = $1`, [claveIdempotencia]
+        );
+        const previo = existente.rows[0];
+        if (previo) {
+          if (Number(previo.propietario) !== Number(idInquilino) ||
+              previo.titulo !== tituloLimpio ||
+              previo.descripcion !== descripcionLimpia ||
+              previo.categoria !== categoria) {
+            return res.status(409).json({ mensaje: 'La solicitud ya fue utilizada con otros datos' });
+          }
+          delete previo.propietario;
+          return res.status(200).json({
+            mensaje: 'Reporte ya registrado', reporte: previo, reutilizado: true,
+          });
+        }
+      }
       return res.status(404).json({
         mensaje: 'No se encontró un contrato activo',
       });

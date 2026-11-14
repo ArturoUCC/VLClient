@@ -7,6 +7,7 @@ const {
   subirFotosReporte,
   obtenerFotosReporte,
 } = require('../controllers/reporteFotosController');
+const { subirFotoIdempotente } = require('../controllers/reporteFotosIdempotenteController');
 
 const router = express.Router();
 
@@ -50,6 +51,13 @@ const recibirFotos = (req, res, next) => {
     next();
   });
 };
+
+router.post(
+  '/:idReporte/sincronizar',
+  verificarToken,
+  recibirFotos,
+  subirFotoIdempotente
+);
 
 router.post(
   '/:idReporte',

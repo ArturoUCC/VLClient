@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { loginInquilino } from '../services/api';
-import { registrarPushTrasLogin } from '../services/pushDispositivo';
+import { registrarPushTrasLogin, pushRemotoHabilitado } from '../services/pushDispositivo';
 import { SesionContext } from '../context/SesionContext';
 
 export default function LoginScreen({ navigation }) {
@@ -55,18 +55,24 @@ const iniciarSesion = async () => {
     );
 
     // Una falla push no impide iniciar sesión ni revela el token en registros.
-    try {
-      await registrarPushTrasLogin(respuesta.token);
-    } catch (_) {
-      // Se reintentará al iniciar sesión nuevamente.
+    if (pushRemotoHabilitado) {
+      try {
+        await registrarPushTrasLogin(respuesta.token);
+      } catch (_) {
+        // Una falla de registro no impide el inicio de sesión.
+      }
     }
 
     // El token se pasa temporalmente por navegación.
     // Después implementaremos su almacenamiento seguro.
     activarSesion(respuesta.token);
-    navigation.replace('Inicio', {
-      token: respuesta.token,
-      inquilino: respuesta.inquilino
+    setPassword('');
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'Inicio', params: {
+        token: respuesta.token,
+        inquilino: respuesta.inquilino,
+      } }],
     });
 
   } catch (error) {

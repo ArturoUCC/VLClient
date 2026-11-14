@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -18,9 +18,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import {
-  crearReporte,
-  subirFotosReporte,
-} from '../services/api';
+  crearIdBorrador, guardarBorrador, obtenerBorrador,
+  copiarFotoBorrador, quitarFotoBorrador, fotosFaltantes,
+  cambiarEstadoBorrador,
+} from '../services/borradoresReporte';
+import { sincronizarBorradores, observarSincronizacion } from '../services/sincronizarReportes';
 
 
 const CATEGORIAS = [
@@ -34,12 +36,107 @@ const CATEGORIAS = [
 
 export default function NuevoReporteScreen({ navigation, route }) {
   const token = route.params?.token;
+  const idInquilino = route.params?.idInquilino;
+  const idBorrador = useRef(route.params?.idBorrador || crearIdBorrador()).current;
 
   const [titulo, setTitulo] = useState('');
   const [descripcion, setDescripcion] = useState('');
   const [categoria, setCategoria] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [fotografias, setFotografias] = useState([]);
+  const [listo, setListo] = useState(false);
+  const [estadoBorrador, setEstadoBorrador] = useState('borrador');
+  const [idReporteGuardado, setIdReporteGuardado] = useState(null);
+  const [errorLocal, setErrorLocal] = useState('');
+  const guardado = useRef(Promise.resolve());
+
+  const persistir = (datos) => {
+    const tarea = guardado.current.then(() => guardarBorrador({
+      id: idBorrador, id_inquilino: idInquilino, ...datos,
+    }));
+    guardado.current = tarea.catch(() => {});
+    return tarea;
+  };
+
+  useEffect(() => {
+    let activo = true;
+    (async () => {
+      try {
+        if (!Number.isSafeInteger(Number(idInquilino)) || Number(idInquilino) <= 0) {
+          throw new Error('Inicia sesión para abrir tus borradores.');
+        }
+        const existente = route.params?.idBorrador
+          ? await obtenerBorrador(idBorrador, idInquilino) : null;
+        if (route.params?.idBorrador && !existente) {
+          throw new Error('Borrador no encontrado para esta cuenta.');
+        }
+        if (activo && existente) {
+          if (existente.estado === 'sincronizando') {
+            existente.estado = existente.id_reporte ? 'error' : 'error_ambiguo';
+            await guardarBorrador(existente);
+          }
+          setTitulo(existente.titulo);
+          setDescripcion(existente.descripcion);
+          setCategoria(existente.categoria);
+          setFotografias(existente.fotos);
+          setEstadoBorrador(existente.estado);
+          setIdReporteGuardado(existente.id_reporte);
+          if (fotosFaltantes(existente.fotos).length) {
+            setErrorLocal('Una o más fotografías ya no están disponibles. Quítalas y vuelve a adjuntarlas.');
+          }
+        }
+        if (activo) setListo(true);
+      } catch (error) {
+        if (activo) setErrorLocal(error.message);
+      }
+    })();
+    return () => { activo = false; };
+  }, [idBorrador, idInquilino]);
+
+  useEffect(() => {
+    if (!listo || estadoBorrador !== 'borrador') return;
+    void persistir({ titulo, descripcion, categoria, fotos: fotografias,
+      estado: estadoBorrador, id_reporte: null })
+      .then(() => setErrorLocal((anterior) => anterior ===
+        'No se pudo guardar el borrador en este dispositivo.' ? '' : anterior))
+      .catch(() => setErrorLocal('No se pudo guardar el borrador en este dispositivo.'));
+  }, [listo, titulo, descripcion, categoria, fotografias, estadoBorrador, idReporteGuardado]);
+
+  useEffect(() => observarSincronizacion(() => {
+    void obtenerBorrador(idBorrador, idInquilino).then((actual) => {
+      if (!actual || actual.estado === 'borrador') return;
+      setEstadoBorrador(actual.estado);
+      setIdReporteGuardado(actual.id_reporte);
+      setFotografias(actual.fotos);
+    }).catch(() => {});
+  }), [idBorrador, idInquilino]);
+
+  const salirGuardando = async () => {
+    if (!listo) return;
+    try {
+      if (estadoBorrador === 'borrador') {
+        await persistir({ titulo, descripcion, categoria, fotos: fotografias,
+          estado: estadoBorrador, id_reporte: idReporteGuardado });
+      }
+      navigation.goBack();
+    } catch (_) {
+      Alert.alert('No se pudo guardar', 'Revisa el espacio disponible e inténtalo de nuevo.');
+    }
+  };
+
+  const agregarFotos = async (fotos) => {
+    const copiadas = [];
+    try {
+      for (const foto of fotos) {
+        copiadas.push(await copiarFotoBorrador(idBorrador, idInquilino, foto));
+      }
+      setFotografias((anteriores) => [...anteriores, ...copiadas].slice(0, 5));
+      setErrorLocal('');
+    } catch (error) {
+      copiadas.forEach(quitarFotoBorrador);
+      Alert.alert('Fotografía no guardada', error.message);
+    }
+  };
 
   
 const seleccionarFotografias = async () => {
@@ -61,10 +158,7 @@ const seleccionarFotografias = async () => {
   });
 
   if (!resultado.canceled) {
-    setFotografias((anteriores) => [
-      ...anteriores,
-      ...resultado.assets.slice(0, 5 - anteriores.length),
-    ]);
+    await agregarFotos(resultado.assets.slice(0, espaciosDisponibles));
   }
 };
 
@@ -91,14 +185,13 @@ const tomarFotografia = async () => {
   });
 
   if (!resultado.canceled) {
-    setFotografias((anteriores) => [
-      ...anteriores,
-      resultado.assets[0],
-    ].slice(0, 5));
+    await agregarFotos([resultado.assets[0]]);
   }
 };
 
 const quitarFotografia = (indice) => {
+  quitarFotoBorrador(fotografias[indice]);
+  setErrorLocal('');
   setFotografias((anteriores) =>
     anteriores.filter((_, i) => i !== indice)
   );
@@ -108,114 +201,72 @@ const quitarFotografia = (indice) => {
   
 
 const enviarReporte = async () => {
-  if (enviando) return;
-
-  if (!titulo.trim()) {
-    Alert.alert('Campo obligatorio', 'Escribe el título del reporte.');
+  if (enviando || !listo || !token) return;
+  if (estadoBorrador === 'enviado' && idReporteGuardado) {
+    navigation.replace('NuevaCita', { token, idReporte: idReporteGuardado, tituloReporte: titulo.trim() });
     return;
   }
-
-  if (!descripcion.trim()) {
-    Alert.alert('Campo obligatorio', 'Describe el desperfecto.');
+  if (['error_ambiguo', 'error', 'sincronizando', 'sincronizando_idempotente'].includes(estadoBorrador)) {
+    Alert.alert('Borrador pendiente', 'Espera a que termine la sincronización o revisa el reporte antes de enviarlo.');
     return;
   }
-
-  if (!categoria) {
-    Alert.alert('Campo obligatorio', 'Selecciona una categoría.');
+  if (estadoBorrador === 'borrador') {
+    if (!titulo.trim() || !descripcion.trim() || !categoria) {
+      Alert.alert('Campos obligatorios', 'Completa el título, la descripción y la categoría.');
+      return;
+    }
+    if (titulo.trim().length > 150 || descripcion.trim().length > 2000) {
+      Alert.alert('Texto demasiado largo', 'Revisa el título y la descripción.');
+      return;
+    }
+  }
+  if (fotografias.length > 5 || fotosFaltantes(fotografias).length) {
+    Alert.alert('Fotografías pendientes', 'Comprueba que las fotografías estén guardadas en este dispositivo.');
     return;
   }
-
-  if (titulo.trim().length > 150 || descripcion.trim().length > 2000) {
-    Alert.alert('Texto demasiado largo', 'Revisa el título y la descripción.');
-    return;
-  }
-
-  if (!token) {
-    Alert.alert('Sesión inválida', 'Inicia sesión nuevamente.');
-    return;
-  }
-
-  if (fotografias.length > 5) {
-    Alert.alert('Límite excedido', 'Solo puedes adjuntar 5 fotografías.');
-    return;
-  }
-
   setEnviando(true);
-
-  let reporteCreado = null;
-
-  const continuarACita = (idReporte) => {
-    navigation.replace('NuevaCita', {
-      token,
-      idReporte,
-      tituloReporte: titulo.trim(),
-    });
-  };
-
   try {
-    // 1. Guardar el reporte en Neon
-    const resultado = await crearReporte(token, {
-      titulo: titulo.trim(),
-      descripcion: descripcion.trim(),
-      categoria,
-    });
-
-    reporteCreado = resultado.reporte;
-
-    if (!reporteCreado?.id_reporte) {
-      throw new Error('No se recibió el identificador del reporte.');
+    if (estadoBorrador === 'borrador') {
+      await persistir({ titulo, descripcion, categoria, fotos: fotografias,
+        estado: 'pendiente_sincronizacion', id_reporte: idReporteGuardado });
+      setEstadoBorrador('pendiente_sincronizacion');
+    } else if (estadoBorrador === 'error_reintentar') {
+      const cambiado = await cambiarEstadoBorrador(
+        idBorrador, idInquilino, 'error_reintentar', 'pendiente_sincronizacion'
+      );
+      if (!cambiado) throw new Error('El borrador cambió de estado. Vuelve a abrirlo.');
+      setEstadoBorrador('pendiente_sincronizacion');
     }
-
-    // 2. Subir las fotos a Cloudinary
-    if (fotografias.length > 0) {
-      try {
-        await subirFotosReporte(
-          token,
-          reporteCreado.id_reporte,
-          fotografias
-        );
-      } catch (errorFotos) {
-        Alert.alert(
-          'Reporte guardado, fotografías pendientes',
-          `El reporte #${reporteCreado.id_reporte} ya existe, pero no se pudieron confirmar las fotografías.\n\n${errorFotos.message}\n\nPuedes continuar con tu cita sin crear otro reporte.`,
-          [
-            {
-              text: 'Continuar a la cita',
-              onPress: () =>
-                continuarACita(reporteCreado.id_reporte),
-            },
-          ]
-        );
-        return;
-      }
+    const resultado = await sincronizarBorradores(token, idInquilino);
+    const actual = await obtenerBorrador(idBorrador, idInquilino);
+    if (actual) {
+      setEstadoBorrador(actual.estado);
+      setIdReporteGuardado(actual.id_reporte);
+      setFotografias(actual.fotos);
     }
-
-    // 3. Continuar directamente con la cita
-    continuarACita(reporteCreado.id_reporte);
-
+    if (actual?.estado === 'enviado') {
+      Alert.alert('Reporte enviado', 'El reporte y sus fotografías se confirmaron correctamente.', [
+        { text: 'Continuar a la cita', onPress: () => navigation.replace('NuevaCita', {
+          token, idReporte: actual.id_reporte, tituloReporte: titulo.trim(),
+        }) },
+      ]);
+    } else if (resultado.estado === 'sin_conexion') {
+      Alert.alert('Guardado sin conexión', 'El reporte se sincronizará al recuperar la conexión mientras VLClient esté abierta.');
+    } else if (resultado.estado === 'sesion_vencida') {
+      Alert.alert('Sesión vencida', 'Inicia sesión nuevamente con la misma cuenta para sincronizar el reporte.');
+    } else if (resultado.estado === 'otra_cuenta') {
+      Alert.alert('Cuenta distinta', 'Inicia sesión con el propietario de este borrador para sincronizarlo.');
+    } else if (resultado.estado !== 'en_curso') {
+      Alert.alert('Sincronización pendiente', 'El reporte permanece guardado. Podrás reintentarlo desde este dispositivo.');
+    }
   } catch (error) {
-    if (reporteCreado?.id_reporte) {
-      Alert.alert(
-        'Reporte creado',
-        `El reporte #${reporteCreado.id_reporte} ya está registrado. Evita volver a enviarlo.`,
-        [
-          {
-            text: 'Continuar a la cita',
-            onPress: () =>
-              continuarACita(reporteCreado.id_reporte),
-          },
-        ]
-      );
-    } else {
-      Alert.alert(
-        'Error al registrar reporte',
-        error.message || 'No se pudo guardar el reporte.'
-      );
-    }
+    Alert.alert('No se pudo sincronizar', error.message || 'Inténtalo nuevamente.');
   } finally {
     setEnviando(false);
   }
 };
+
+
 
 
 
@@ -243,6 +294,15 @@ const enviarReporte = async () => {
           <Text style={styles.subtitle}>
             Describe el problema que presenta tu vivienda.
           </Text>
+          <Text style={{ color: '#23558C', marginTop: 8 }}>
+            {estadoBorrador === 'pendiente_sincronizacion' ? 'Pendiente de sincronización' :
+              ['sincronizando', 'sincronizando_idempotente'].includes(estadoBorrador) ? 'Sincronizando' :
+              estadoBorrador === 'enviado' ? 'Enviado' :
+              estadoBorrador === 'error_reintentar' ? 'Error: toca Reintentar' :
+              estadoBorrador === 'error_ambiguo' ? 'Error: resultado sin confirmar' :
+              estadoBorrador === 'error' ? 'Error: revisa el borrador' : 'Borrador'}
+          </Text>
+          {!!errorLocal && <Text style={{ color: '#B91C1C', marginTop: 8 }}>{errorLocal}</Text>}
         </View>
 
         {/* INFORMACIÓN DEL REPORTE */}
@@ -256,7 +316,7 @@ const enviarReporte = async () => {
             value={titulo}
             onChangeText={setTitulo}
             maxLength={150}
-            editable={!enviando}
+            editable={!enviando && estadoBorrador === 'borrador'}
           />
 
           <Text style={styles.contador}>
@@ -278,7 +338,7 @@ const enviarReporte = async () => {
                     seleccionada && styles.categoriaSeleccionada,
                   ]}
                   onPress={() => setCategoria(item.valor)}
-                  disabled={enviando}
+                  disabled={enviando || estadoBorrador !== 'borrador'}
                 >
                   <Ionicons
                     name={item.icono}
@@ -313,7 +373,7 @@ const enviarReporte = async () => {
             multiline
             textAlignVertical="top"
             maxLength={2000}
-            editable={!enviando}
+            editable={!enviando && estadoBorrador === 'borrador'}
           />
 
           <Text style={styles.contador}>
@@ -336,7 +396,7 @@ const enviarReporte = async () => {
             <TouchableOpacity
               style={styles.fotoBoton}
               onPress={seleccionarFotografias}
-              disabled={enviando || fotografias.length >= 5}
+              disabled={enviando || !listo || estadoBorrador !== 'borrador' || fotografias.length >= 5}
             >
               <Ionicons
                 name="images-outline"
@@ -352,7 +412,7 @@ const enviarReporte = async () => {
             <TouchableOpacity
               style={styles.fotoBoton}
               onPress={tomarFotografia}
-              disabled={enviando || fotografias.length >= 5}
+              disabled={enviando || !listo || estadoBorrador !== 'borrador' || fotografias.length >= 5}
             >
               <Ionicons
                 name="camera-outline"
@@ -382,7 +442,7 @@ const enviarReporte = async () => {
                 <TouchableOpacity
                   style={styles.quitarFoto}
                   onPress={() => quitarFotografia(indice)}
-                  disabled={enviando}
+                  disabled={enviando || estadoBorrador !== 'borrador'}
                 >
                   <Ionicons
                     name="close-circle"
@@ -416,7 +476,8 @@ const enviarReporte = async () => {
             enviando && styles.submitDisabled,
           ]}
           onPress={enviarReporte}
-          disabled={enviando}
+          disabled={enviando || !listo ||
+            ['error_ambiguo', 'error', 'sincronizando', 'sincronizando_idempotente'].includes(estadoBorrador)}
         >
           {enviando ? (
             <ActivityIndicator color="#FFFFFF" />
@@ -429,20 +490,30 @@ const enviarReporte = async () => {
               />
 
               <Text style={styles.submitText}>
-                Enviar reporte
+                {estadoBorrador === 'error_reintentar' ? 'Reintentar envío' :
+                  estadoBorrador === 'enviado' ? 'Continuar a la cita' : 'Enviar reporte'}
               </Text>
             </>
           )}
         </TouchableOpacity>
 
+        {estadoBorrador === 'enviado' && !!idReporteGuardado && (
+          <TouchableOpacity style={styles.submitButton}
+            onPress={() => navigation.replace('NuevaCita', {
+              token, idReporte: idReporteGuardado, tituloReporte: titulo.trim(),
+            })}>
+            <Text style={styles.submitText}>Continuar con el reporte #{idReporteGuardado}</Text>
+          </TouchableOpacity>
+        )}
+
         {/* CANCELAR */}
         <TouchableOpacity
           style={styles.cancelButton}
-          onPress={() => navigation.goBack()}
+          onPress={salirGuardando}
           disabled={enviando}
         >
           <Text style={styles.cancelText}>
-            Cancelar
+            Guardar borrador y volver
           </Text>
         </TouchableOpacity>
       </ScrollView>

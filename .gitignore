@@ -15,10 +15,13 @@ node_modules/
 *firebase-adminsdk*.json
 *credentials*.json
 *private-key*.json
+google-services.json
+GoogleService-Info.plist
 *.pem
 *.p8
 *.p12
 *.key
+*.keystore
 *.jks
 *.mobileprovision
 

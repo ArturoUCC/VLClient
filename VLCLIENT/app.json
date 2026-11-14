@@ -25,9 +25,11 @@
       "expo-font",
       "@react-native-community/datetimepicker",
       "expo-secure-store",
-      "expo-notifications"
+      "expo-notifications",
+      "expo-sqlite"
     ],
     "extra": {
+      "pushRemotoHabilitado": false,
       "eas": {
         "projectId": "adb5f587-2df0-49f7-9b40-c04c6bd4944e"
       }

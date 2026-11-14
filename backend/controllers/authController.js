@@ -10,6 +10,7 @@ const RESPUESTA_SOLICITUD = {
 };
 const ERROR_TOKEN = { mensaje: 'El enlace es inválido o ha expirado.' };
 const hashToken = (token) => createHash('sha256').update(token).digest('hex');
+const hashFicticio = bcrypt.hash('comparacion-de-acceso-no-registrado', 12);
 const responderSolicitud = async (res, inicio) => {
   // Reduce diferencias observables entre correos registrados y desconocidos.
   const espera = Math.max(0, 500 - (Date.now() - inicio));
@@ -40,6 +41,17 @@ const iniciarSesion = async (req, res) => {
       });
     }
 
+    // El mismo limitador PostgreSQL de recuperación se comparte entre instancias.
+    // Las claves HMAC separan los intentos de login de las otras operaciones.
+    const correoNormalizado = correo.trim().toLowerCase();
+    const ipPermitida = await consumirLimite('login-ip', req.ip, 20, 15);
+    const correoPermitido = await consumirLimite('login-correo', correoNormalizado, 5, 15);
+    if (!ipPermitida || !correoPermitido) {
+      return res.status(429).json({
+        mensaje: 'Demasiados intentos. Intenta más tarde'
+      });
+    }
+
     const resultado = await pool.query(
       `SELECT
         id_inquilino,
@@ -52,23 +64,17 @@ const iniciarSesion = async (req, res) => {
       FROM inquilinos
       WHERE LOWER(correo) = LOWER($1)
       LIMIT 1`,
-      [correo.trim()]
+      [correoNormalizado]
     );
 
     const inquilino = resultado.rows[0];
 
-    if (!inquilino || !inquilino.activo) {
-      return res.status(401).json({
-        mensaje: 'Credenciales incorrectas'
-      });
-    }
-
     const passwordValido = await bcrypt.compare(
       password,
-      inquilino.password_hash
+      inquilino?.activo ? inquilino.password_hash : await hashFicticio
     );
 
-    if (!passwordValido) {
+    if (!inquilino?.activo || !passwordValido) {
       return res.status(401).json({
         mensaje: 'Credenciales incorrectas'
       });

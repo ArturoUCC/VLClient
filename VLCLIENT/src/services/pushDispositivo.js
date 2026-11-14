@@ -4,15 +4,22 @@ import * as Crypto from 'expo-crypto';
 import * as Notifications from 'expo-notifications';
 import * as SecureStore from 'expo-secure-store';
 import { registrarDispositivoPush, desactivarDispositivoPush } from './api';
+import { estaHabilitadoPushRemoto } from './pushHabilitacion';
 
 const CLAVE_INSTALACION = 'vlclient_push_instalacion_id';
 const CLAVE_PREFERENCIA = 'vlclient_push_habilitado';
 const projectId = Constants.expoConfig?.extra?.eas?.projectId ??
   Constants.easConfig?.projectId;
+export const pushRemotoHabilitado =
+  estaHabilitadoPushRemoto(Constants.expoConfig?.extra);
 
 const pushDisponible = () =>
+  pushRemotoHabilitado &&
   (Platform.OS === 'android' || Platform.OS === 'ios') &&
-  Constants.appOwnership !== 'expo' && !!projectId;
+  Constants.appOwnership !== 'expo' && !!projectId &&
+  (Platform.OS === 'android'
+    ? !!Constants.expoConfig?.android?.package
+    : !!Constants.expoConfig?.ios?.bundleIdentifier);
 
 const obtenerInstalacionId = async () => {
   let id = await SecureStore.getItemAsync(CLAVE_INSTALACION);

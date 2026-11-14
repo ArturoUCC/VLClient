@@ -2,7 +2,17 @@
 
 Aplicación para inquilinos de Inmobiliaria Vives Lara. La app móvil utiliza React Native con Expo y React Navigation; la API utiliza Node.js, Express y PostgreSQL en Neon.
 
+En la primera versión, las **notificaciones internas** están disponibles. Las **push remotas** se posponen: se conserva su infraestructura, pero el registro móvil y el envío del procesador permanecen desactivados. [PUSH.md](PUSH.md) documenta la activación futura.
+
 La documentación operativa del servidor está en [backend/README.md](backend/README.md).
+
+**Decisión pendiente de Vives Lara:** la pantalla de estado de cuenta consulta la mensualidad más reciente del contrato activo; no hay historial de estados de cuenta en la app. El historial de pagos sí está disponible.
+
+## Borradores de reportes
+
+Desde **Mis reportes → Ver borradores guardados** se pueden crear, editar y eliminar borradores en el dispositivo. El texto se guarda mientras se escribe y las fotos seleccionadas se copian al directorio persistente de la app. Los borradores se consultan únicamente después de iniciar sesión con el mismo inquilino. Si se cierra la app sin conexión, el borrador permanece guardado, pero será necesario volver a iniciar sesión cuando haya red; la app no conserva un JWT para acceso sin conexión.
+
+La sincronización idempotente está implementada localmente. Se reintenta al recuperar la conexión mientras la app está abierta, al iniciar sesión y al volver al primer plano. La migración de claves ya fue aplicada manualmente en Neon; faltan el despliegue y una prueba real en Expo Go antes de considerar terminada la función. [REPORTES.md](REPORTES.md) detalla el flujo y la prueba con dos inquilinos.
 
 ## Recordatorios de renta y automatización futura
 
