@@ -131,12 +131,9 @@ const iniciarSesion = async () => {
 
             <TouchableOpacity
               style={styles.forgotButton}
-              onPress={() =>
-                Alert.alert(
-                  'Recuperar contraseña',
-                  'Esta función se implementará próximamente.'
-                )
-              }
+              onPress={() => navigation.navigate('RecuperarPassword')}
+              accessibilityRole="button"
+              accessibilityLabel="Recuperar contraseña"
             >
               <Text style={styles.forgotText}>
                 ¿Olvidaste tu contraseña?

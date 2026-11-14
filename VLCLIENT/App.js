@@ -4,6 +4,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import BienvenidaScreen from './src/screens/BienvenidaScreen';
 import LoginScreen from './src/screens/LoginScreen';
+import RecuperarPasswordScreen from './src/screens/RecuperarPasswordScreen';
 import InicioScreen from './src/screens/InicioScreen';
 import PerfilScreen from './src/screens/PerfilScreen';
 import PagosScreen from './src/screens/PagosScreen';
@@ -28,6 +29,12 @@ export default function App() {
           name="Login"
           component={LoginScreen}
           options={{ title: 'Iniciar sesión' }}
+        />
+
+        <Stack.Screen
+          name="RecuperarPassword"
+          component={RecuperarPasswordScreen}
+          options={{ title: 'Recuperar contraseña' }}
         />
 
         <Stack.Screen

@@ -25,6 +25,21 @@ export const loginInquilino = async (correo, password) => {
   return data;
 };
 
+// Solicitar un enlace de recuperación sin revelar si el correo está registrado.
+export const solicitarRecuperacionPassword = async (correo) => {
+  const response = await fetch(`${API_URL}/auth/solicitar-recuperacion`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ correo }),
+  });
+
+  if (!response.ok) {
+    throw new Error('No se pudo enviar la solicitud. Inténtalo más tarde.');
+  }
+};
+
 // Consultar estado de cuenta
 export const obtenerMiEstadoCuenta = async (token) => {
   const response = await fetch(

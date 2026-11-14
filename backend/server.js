@@ -5,6 +5,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 
 const app = express();
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
 const pool = require('./config/db');
 const inquilinosRoutes = require('./routes/inquilinosRoutes');
@@ -16,11 +17,13 @@ const reportesRoutes = require('./routes/reportesRoutes');
 const reporteFotosRoutes = require('./routes/reporteFotosRoutes');
 const citasRoutes = require('./routes/citasRoutes');
 const notificacionesRoutes = require('./routes/notificacionesRoutes');
+const recuperacionPageRoutes = require('./routes/recuperacionPageRoutes');
 
 // Middlewares
 app.use(helmet());
 app.use(cors());
 app.use(express.json());
+app.use('/recuperar-password', recuperacionPageRoutes);
 //app.use('/api/inquilinos', inquilinosRoutes);
 app.use('/api/estados-de-cuenta', estadosCuentaRoutes);
 app.use('/api/auth', authRoutes);

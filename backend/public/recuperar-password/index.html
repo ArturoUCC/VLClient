@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="referrer" content="no-referrer">
+    <meta name="robots" content="noindex, nofollow">
+    <title>Restablecer contraseña · VLClient</title>
+    <link rel="stylesheet" href="/recuperar-password/estilos.css">
+    <script src="/recuperar-password/app.js" defer></script>
+  </head>
+  <body>
+    <main class="contenedor">
+      <section class="tarjeta" aria-labelledby="titulo">
+        <div class="marca" aria-label="Inmobiliaria Vives Lara">
+          <span class="marca-icono" aria-hidden="true">VL</span>
+          <span>Vives Lara</span>
+        </div>
+
+        <p class="etiqueta">Seguridad de tu cuenta</p>
+        <h1 id="titulo">Crea una nueva contraseña</h1>
+        <p class="descripcion">Escribe y confirma la contraseña que usarás para entrar a VLClient.</p>
+
+        <form id="formulario" novalidate>
+          <div class="campo">
+            <label for="password">Nueva contraseña</label>
+            <input id="password" name="password" type="password" autocomplete="new-password"
+              minlength="12" required aria-describedby="ayuda-password">
+            <p id="ayuda-password" class="ayuda">Mínimo 12 caracteres y máximo 72 bytes.</p>
+          </div>
+
+          <div class="campo">
+            <label for="confirmacion">Confirmar contraseña</label>
+            <input id="confirmacion" name="confirmacion" type="password"
+              autocomplete="new-password" required>
+          </div>
+
+          <button id="enviar" type="submit">Guardar nueva contraseña</button>
+        </form>
+
+        <p id="mensaje" class="mensaje" role="status" aria-live="polite" hidden></p>
+        <p class="nota">El enlace vence 30 minutos después de solicitarlo y solo se puede usar una vez.</p>
+      </section>
+    </main>
+  </body>
+</html>

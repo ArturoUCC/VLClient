@@ -19,7 +19,8 @@ const verificarToken = async (req, res, next) => {
 
     if (
       datos.rol !== 'inquilino' ||
-      !Number.isInteger(datos.id_inquilino)
+      !Number.isInteger(datos.id_inquilino) ||
+      !Number.isInteger(datos.sesion_version)
     ) {
       return res.status(403).json({
         mensaje: 'Acceso no autorizado'
@@ -27,15 +28,16 @@ const verificarToken = async (req, res, next) => {
     }
 
     const resultado = await pool.query(
-      `SELECT id_inquilino
+      `SELECT id_inquilino, sesion_version
        FROM inquilinos
        WHERE id_inquilino = $1 AND activo = TRUE`,
       [datos.id_inquilino]
     );
 
-    if (resultado.rows.length === 0) {
-      return res.status(403).json({
-        mensaje: 'La cuenta no está activa'
+    if (resultado.rows.length === 0 ||
+        resultado.rows[0].sesion_version !== datos.sesion_version) {
+      return res.status(401).json({
+        mensaje: 'Sesión inválida o expirada'
       });
     }
 
