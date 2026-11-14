@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { obtenerMiPerfil } from '../services/api';
+import { obtenerMiPerfil, actualizarRecordatorioRenta } from '../services/api';
 
 export default function PerfilScreen({ navigation, route }) {
   const [notificaciones, setNotificaciones] = useState(true);
@@ -20,6 +20,8 @@ export default function PerfilScreen({ navigation, route }) {
   const [cargando, setCargando] = useState(true);
   const [actualizando, setActualizando] = useState(false);
   const [error, setError] = useState('');
+  const [diasRecordatorio, setDiasRecordatorio] = useState(null);
+  const [guardandoRecordatorio, setGuardandoRecordatorio] = useState(false);
 
   // Token recibido desde la pantalla Inicio
   const token = route.params?.token;
@@ -37,6 +39,7 @@ export default function PerfilScreen({ navigation, route }) {
 
       const datos = await obtenerMiPerfil(token);
       setPerfil(datos);
+      setDiasRecordatorio(Number(datos.recordatorio_renta_dias));
     } catch (err) {
       setError(err.message || 'No se pudo consultar tu perfil.');
     } finally {
@@ -52,6 +55,26 @@ export default function PerfilScreen({ navigation, route }) {
   const actualizar = () => {
     setActualizando(true);
     cargarPerfil();
+  };
+
+  const guardarRecordatorio = async () => {
+    if (guardandoRecordatorio || !Number.isInteger(diasRecordatorio) ||
+        diasRecordatorio < 1 || diasRecordatorio > 31 || !token) return;
+    setGuardandoRecordatorio(true);
+    try {
+      const resultado = await actualizarRecordatorioRenta(token, diasRecordatorio);
+      setPerfil((anterior) => ({
+        ...anterior,
+        recordatorio_renta_dias: resultado.recordatorio_renta_dias,
+      }));
+      setDiasRecordatorio(resultado.recordatorio_renta_dias);
+      Alert.alert('Preferencia guardada',
+        `Recibirás el recordatorio de renta con ${resultado.recordatorio_renta_dias} días de anticipación.`);
+    } catch (err) {
+      Alert.alert('No se pudo guardar', err.message || 'Inténtalo de nuevo.');
+    } finally {
+      setGuardandoRecordatorio(false);
+    }
   };
 
   const formatoFecha = (fecha) => {
@@ -272,7 +295,7 @@ export default function PerfilScreen({ navigation, route }) {
                 />
               </TouchableOpacity>
 
-              <View style={[styles.optionRow, styles.lastRow]}>
+              <View style={styles.optionRow}>
                 <Ionicons
                   name="notifications-outline"
                   size={21}
@@ -295,6 +318,54 @@ export default function PerfilScreen({ navigation, route }) {
                   }
                 />
               </View>
+
+              {perfil && (
+                <View style={styles.recordatorioContainer}>
+                  <View style={styles.recordatorioTitulo}>
+                    <Ionicons name="calendar-outline" size={21} color="#23558C" />
+                    <Text style={styles.optionText}>Recordatorio de renta</Text>
+                  </View>
+                  <Text style={styles.recordatorioAyuda}>
+                    Días antes del vencimiento de tu renta (1 a 31).
+                  </Text>
+                  <View style={styles.selectorDias}>
+                    <TouchableOpacity
+                      style={styles.selectorBoton}
+                      onPress={() => setDiasRecordatorio((dias) => Math.max(1, dias - 1))}
+                      disabled={guardandoRecordatorio || diasRecordatorio <= 1}
+                      accessibilityRole="button"
+                      accessibilityLabel="Reducir días de anticipación"
+                      accessibilityState={{ disabled: guardandoRecordatorio || diasRecordatorio <= 1 }}
+                    >
+                      <Text style={styles.selectorSimbolo}>−</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.diasValor}>{diasRecordatorio} días</Text>
+                    <TouchableOpacity
+                      style={styles.selectorBoton}
+                      onPress={() => setDiasRecordatorio((dias) => Math.min(31, dias + 1))}
+                      disabled={guardandoRecordatorio || diasRecordatorio >= 31}
+                      accessibilityRole="button"
+                      accessibilityLabel="Aumentar días de anticipación"
+                      accessibilityState={{ disabled: guardandoRecordatorio || diasRecordatorio >= 31 }}
+                    >
+                      <Text style={styles.selectorSimbolo}>+</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <TouchableOpacity
+                    style={[styles.guardarRecordatorio,
+                      (guardandoRecordatorio || diasRecordatorio === perfil.recordatorio_renta_dias) &&
+                        styles.guardarDeshabilitado]}
+                    onPress={guardarRecordatorio}
+                    disabled={guardandoRecordatorio ||
+                      diasRecordatorio === perfil.recordatorio_renta_dias}
+                    accessibilityRole="button"
+                    accessibilityLabel="Guardar anticipación del recordatorio de renta"
+                  >
+                    {guardandoRecordatorio ? <ActivityIndicator color="#FFFFFF" /> :
+                      <Text style={styles.guardarRecordatorioTexto}>Guardar anticipación</Text>}
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
 
             {/* CERRAR SESIÓN */}
@@ -441,6 +512,20 @@ const styles = StyleSheet.create({
     color: '#334155',
     fontWeight: '500',
   },
+  recordatorioContainer: { paddingVertical: 18 },
+  recordatorioTitulo: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  recordatorioAyuda: { color: '#64748B', fontSize: 12, marginTop: 8 },
+  selectorDias: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 22, marginVertical: 17 },
+  selectorBoton: { width: 44, height: 44, borderRadius: 10,
+    borderColor: '#23558C', borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  selectorSimbolo: { fontSize: 24, color: '#23558C', fontWeight: 'bold' },
+  diasValor: { minWidth: 80, textAlign: 'center', color: '#1E293B',
+    fontSize: 17, fontWeight: 'bold' },
+  guardarRecordatorio: { minHeight: 46, backgroundColor: '#23558C',
+    borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  guardarDeshabilitado: { opacity: 0.45 },
+  guardarRecordatorioTexto: { color: '#FFFFFF', fontWeight: 'bold' },
   logoutButton: {
     flexDirection: 'row',
     alignItems: 'center',

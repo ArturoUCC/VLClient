@@ -79,6 +79,22 @@ export const obtenerMiPerfil = async (token) => {
   return data;
 };
 
+export const actualizarRecordatorioRenta = async (token, dias) => {
+  const response = await fetch(`${API_URL}/perfil/recordatorio-renta`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ recordatorio_renta_dias: dias }),
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.mensaje || 'No se pudo guardar la anticipación');
+  }
+  return data;
+};
+
 
 export const obtenerMisPagos = async (token) => {
   const response = await fetch(`${API_URL}/pagos/mis-pagos`, {
