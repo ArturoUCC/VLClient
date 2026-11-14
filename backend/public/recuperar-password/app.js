@@ -7,6 +7,8 @@
   const formulario = document.getElementById('formulario');
   const password = document.getElementById('password');
   const confirmacion = document.getElementById('confirmacion');
+  const verPassword = document.getElementById('ver-password');
+  const verConfirmacion = document.getElementById('ver-confirmacion');
   const boton = document.getElementById('enviar');
   const mensaje = document.getElementById('mensaje');
 
@@ -15,6 +17,18 @@
     mensaje.className = `mensaje ${tipo}`;
     mensaje.hidden = false;
   };
+
+  const configurarVisibilidad = (campo, control, nombre) => {
+    control.addEventListener('click', () => {
+      const visible = campo.type === 'password';
+      campo.type = visible ? 'text' : 'password';
+      control.setAttribute('aria-pressed', String(visible));
+      control.setAttribute('aria-label', `${visible ? 'Ocultar' : 'Mostrar'} ${nombre}`);
+    });
+  };
+
+  configurarVisibilidad(password, verPassword, 'nueva contraseña');
+  configurarVisibilidad(confirmacion, verConfirmacion, 'confirmación de contraseña');
 
   if (!token || !/^[a-f0-9]{64}$/.test(token)) {
     token = null;
