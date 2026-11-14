@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { crearCita } from '../services/api';
+import { confirmarCitaDeBorrador } from '../services/citasBorradores';
 
 // Horarios de prueba disponibles para solicitar citas
 const HORARIOS = [
@@ -227,6 +228,17 @@ const volverAInicio = () => {
         hora_cita: hora,
         observaciones: observaciones.trim(),
       });
+
+      if (!Number.isSafeInteger(Number(resultado?.cita?.id_cita)) ||
+          Number(resultado.cita.id_reporte) !== Number(idReporte)) {
+        throw new Error('No se pudo verificar la cita creada para este reporte.');
+      }
+
+      // La cita ya está confirmada por la API. Si falla la limpieza local,
+      // Borradores volverá a conciliarla al abrir la pantalla.
+      try {
+        await confirmarCitaDeBorrador(token, idReporte, resultado.cita);
+      } catch (_) { /* Conservar la cita remota y reintentar la conciliación. */ }
 
       // Mostrar confirmación
       Alert.alert(

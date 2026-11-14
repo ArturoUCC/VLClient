@@ -172,3 +172,32 @@ export const eliminarBorrador = async (id, idInquilino) => {
   const directorio = carpeta(id, idInquilino);
   if (directorio.exists) directorio.delete();
 };
+
+// Retira solo el borrador enviado que corresponde al reporte de una cita
+// confirmada por la API. No afecta al reporte, fotos ni cita remotos.
+export const retirarBorradorConCita = async (idReporte, idInquilino) => {
+  if (!propietarioValido(idInquilino) ||
+      !Number.isSafeInteger(Number(idReporte)) || Number(idReporte) <= 0) {
+    throw new Error('Reporte o inquilino inválido');
+  }
+  const base = await db();
+  const filas = await base.getAllAsync(
+    `SELECT id FROM borradores_reporte
+     WHERE id_inquilino = ? AND id_reporte = ? AND estado = 'enviado'`,
+    Number(idInquilino), Number(idReporte)
+  );
+  let retirados = 0;
+  for (const fila of filas) {
+    const resultado = await base.runAsync(
+      `DELETE FROM borradores_reporte
+       WHERE id = ? AND id_inquilino = ? AND id_reporte = ? AND estado = 'enviado'`,
+      fila.id, Number(idInquilino), Number(idReporte)
+    );
+    if (resultado.changes === 1) {
+      retirados++;
+      const directorio = carpeta(fila.id, idInquilino);
+      if (directorio.exists) directorio.delete();
+    }
+  }
+  return retirados;
+};

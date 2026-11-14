@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { eliminarBorrador, listarBorradores, fotosFaltantes } from '../services/borradoresReporte';
 import { observarSincronizacion } from '../services/sincronizarReportes';
+import { conciliarCitasDeBorradores } from '../services/citasBorradores';
 
 const NOMBRES = {
   borrador: 'Borrador',
@@ -28,7 +29,17 @@ export default function BorradoresReporteScreen({ navigation, route }) {
       setError('No se pudieron consultar los borradores de este dispositivo.');
     }
   }, [idInquilino]);
-  useFocusEffect(useCallback(() => { void cargar(); }, [cargar]));
+  useFocusEffect(useCallback(() => {
+    let activo = true;
+    void (async () => {
+      await cargar();
+      try {
+        await conciliarCitasDeBorradores(token, idInquilino);
+      } catch (_) { /* Sin confirmación de la API se conserva el borrador. */ }
+      if (activo) await cargar();
+    })();
+    return () => { activo = false; };
+  }, [cargar, token, idInquilino]));
   useEffect(() => observarSincronizacion(() => { void cargar(); }), [cargar]);
 
   const eliminar = (borrador) => Alert.alert('Eliminar borrador',

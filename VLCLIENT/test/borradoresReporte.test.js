@@ -25,9 +25,13 @@ const base = {
       return { changes: 1 };
     }
     if (sql.includes('DELETE FROM borradores_reporte')) {
-      const [id, owner] = params;
+      const [id, owner, idReporte] = params;
       if (filas.get(id)?.id_inquilino !== owner ||
-          !['borrador', 'enviado'].includes(filas.get(id)?.estado)) return { changes: 0 };
+          (idReporte !== undefined &&
+            (filas.get(id)?.estado !== 'enviado' ||
+             filas.get(id)?.id_reporte !== idReporte)) ||
+          (idReporte === undefined &&
+            !['borrador', 'enviado'].includes(filas.get(id)?.estado))) return { changes: 0 };
       filas.delete(id);
       return { changes: 1 };
     }
@@ -70,8 +74,13 @@ const base = {
     const fila = filas.get(id);
     return fila?.id_inquilino === owner ? fila : null;
   },
-  async getAllAsync(sql, owner) {
+  async getAllAsync(sql, owner, idReporte) {
     assert.match(sql, /id_inquilino = \?/);
+    if (sql.includes('SELECT id FROM borradores_reporte')) {
+      return [...filas.values()].filter((fila) => fila.id_inquilino === owner &&
+        fila.id_reporte === idReporte && fila.estado === 'enviado')
+        .map((fila) => ({ id: fila.id }));
+    }
     return [...filas.values()].filter((fila) => fila.id_inquilino === owner);
   },
 };
@@ -154,4 +163,24 @@ test('la cola guarda progreso y recupera una sincronización interrumpida', asyn
   await assert.rejects(servicio.eliminarBorrador(id, 1), /pendiente/);
   await servicio.cambiarEstadoBorrador(id, 1, 'pendiente_sincronizacion', 'enviado');
   await servicio.eliminarBorrador(id, 1);
+});
+
+test('solo se retira el borrador enviado del propietario y reporte de la cita', async () => {
+  const id13 = servicio.crearIdBorrador();
+  const id14 = servicio.crearIdBorrador();
+  const idPendiente = servicio.crearIdBorrador();
+  const foto = await servicio.copiarFotoBorrador(id13, 1, { uri: 'cache/foto.jpg' });
+  for (const [id, idReporte, fotos] of [[id13, 13, [foto]], [id14, 14, []]]) {
+    await servicio.guardarBorrador({ id, id_inquilino: 1, id_reporte: idReporte,
+      titulo: 'Reporte', estado: 'enviado', fotos });
+  }
+  await servicio.guardarBorrador({ id: idPendiente, id_inquilino: 1,
+    id_reporte: 13, titulo: 'Fotos pendientes', estado: 'pendiente_sincronizacion' });
+  assert.equal(await servicio.retirarBorradorConCita(13, 2), 0);
+  assert.ok(await servicio.obtenerBorrador(id13, 1));
+  assert.equal(await servicio.retirarBorradorConCita(13, 1), 1);
+  assert.equal(await servicio.obtenerBorrador(id13, 1), null);
+  assert.ok(await servicio.obtenerBorrador(id14, 1));
+  assert.ok(await servicio.obtenerBorrador(idPendiente, 1));
+  assert.equal(servicio.fotosFaltantes([foto]).length, 1);
 });
