@@ -348,19 +348,26 @@ export const crearCita = async (token, cita) => {
   return data;
 };
 
-export const reagendarCita = async (token, idCita, solicitud) => {
+export const reagendarCita = async (token, idCita, datosReagendado) => {
   const response = await solicitud(`${API_URL}/citas/${idCita}/reagendar`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify(solicitud),
+    body: JSON.stringify(datosReagendado),
   });
 
   const data = await response.json();
   if (!response.ok) {
-    throw new Error(data.mensaje || 'No se pudo reagendar la cita');
+    const error = new Error(data.mensaje || 'No se pudo reagendar la cita');
+    error.status = response.status;
+    throw error;
+  }
+  if (Number(data?.cita?.id_cita) !== Number(idCita) ||
+      data?.cita?.reagendado_estado !== 'utilizado' ||
+      data?.cita?.estado !== 'programada') {
+    throw new Error('No se pudo verificar la respuesta de la cita');
   }
   return data;
 };

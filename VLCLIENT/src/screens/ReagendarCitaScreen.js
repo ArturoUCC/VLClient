@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
   Alert, ActivityIndicator, Platform,
@@ -8,6 +8,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { obtenerMisCitas, obtenerMisNotificaciones, reagendarCita } from '../services/api';
+import { evaluarResultadoReagendado } from '../services/resultadoReagendado';
 
 const HORARIOS = [
   '09:00', '10:00', '11:00', '12:00', '13:00',
@@ -33,6 +34,9 @@ export default function ReagendarCitaScreen({ navigation, route }) {
   const [fecha, setFecha] = useState(null);
   const [hora, setHora] = useState('');
   const [mostrarCalendario, setMostrarCalendario] = useState(false);
+  const [verificacionPendiente, setVerificacionPendiente] = useState(false);
+  const [revision, setRevision] = useState(0);
+  const envioEnCurso = useRef(false);
 
   useFocusEffect(useCallback(() => {
     let activo = true;
@@ -59,15 +63,19 @@ export default function ReagendarCitaScreen({ navigation, route }) {
         setCita(encontrada);
         setDisponible(Boolean(aviso.reagendar_disponible) &&
           encontrada.reagendado_estado === 'solicitado');
+        setVerificacionPendiente(false);
       } catch (err) {
-        if (activo) setError(err.message || 'No se pudo consultar la cita.');
+        if (activo) {
+          setDisponible(false);
+          setError('No se pudo comprobar el estado de la cita. Inténtalo de nuevo.');
+        }
       } finally {
         if (activo) setCargando(false);
       }
     };
     cargar();
     return () => { activo = false; };
-  }, [token, idCita, idNotificacion]));
+  }, [token, idCita, idNotificacion, revision]));
 
   const horarioPasado = (fechaElegida, opcion) => {
     if (!fechaElegida) return true;
@@ -79,7 +87,7 @@ export default function ReagendarCitaScreen({ navigation, route }) {
   };
 
   const confirmar = async () => {
-    if (guardando || !disponible) return;
+    if (guardando || envioEnCurso.current || !disponible || verificacionPendiente) return;
     if (!fecha || !hora) {
       Alert.alert('Datos incompletos', 'Selecciona una fecha y un horario.');
       return;
@@ -93,25 +101,66 @@ export default function ReagendarCitaScreen({ navigation, route }) {
       Alert.alert('Mismo horario', 'Selecciona una fecha u hora diferente.');
       return;
     }
+    envioEnCurso.current = true;
     setGuardando(true);
+    let resultado;
     try {
-      const resultado = await reagendarCita(token, idCita, {
+      resultado = await reagendarCita(token, idCita, {
         id_notificacion: idNotificacion,
         fecha_cita: nuevaFecha,
         hora_cita: hora,
       });
-      setCita(resultado.cita);
-      setDisponible(false);
-      Alert.alert(
-        'Cita reagendada',
-        'El nuevo horario quedó pendiente de confirmación administrativa.',
-        [{ text: 'Aceptar', onPress: () => navigation.goBack() }]
-      );
     } catch (err) {
-      Alert.alert('No se pudo reagendar', err.message || 'Inténtalo de nuevo.');
+      // Un fallo de transporte o de lectura de la respuesta puede ocurrir
+      // después del COMMIT. Consultar la cita antes de permitir otro envío.
+      setDisponible(false);
+      if (err?.name === 'SesionExpiradaError') return;
+      let estado = { estado: 'sin_confirmacion' };
+      try {
+        const citas = await obtenerMisCitas(token);
+        estado = evaluarResultadoReagendado(citas, idCita, nuevaFecha, hora);
+      } catch (_) { /* No inferir un fallo del POST si tampoco responde el GET. */ }
+
+      if (estado.estado === 'confirmado') {
+        setCita(estado.cita);
+        setVerificacionPendiente(false);
+        Alert.alert('Cita reagendada',
+          'El nuevo horario quedó pendiente de confirmación administrativa.',
+          [{ text: 'Aceptar', onPress: () => navigation.goBack() }]);
+      } else if (estado.estado === 'oportunidad_utilizada' ||
+                 estado.estado === 'no_disponible') {
+        setCita(estado.cita);
+        setVerificacionPendiente(false);
+        Alert.alert('Estado actualizado',
+          'Esta solicitud ya no está disponible. Consulta el estado actual de tu cita.');
+      } else if (estado.estado === 'todavia_solicitado' && err?.status) {
+        // Una respuesta HTTP de error confirma que el servidor terminó el
+        // intento; el estado leído conserva la oportunidad de reagendar.
+        setCita(estado.cita);
+        setDisponible(true);
+        setVerificacionPendiente(false);
+        Alert.alert('No se pudo usar ese horario',
+          err.status === 409
+            ? 'El horario ya está ocupado. Elige otro y vuelve a intentarlo.'
+            : 'La solicitud no se completó. Revisa la fecha y el horario.');
+      } else {
+        setVerificacionPendiente(true);
+        Alert.alert('Resultado por verificar',
+          'No pudimos confirmar si el horario se guardó. Comprueba el estado antes de intentarlo otra vez.');
+      }
+      return;
     } finally {
       setGuardando(false);
+      envioEnCurso.current = false;
     }
+    // El manejo de la respuesta confirmada queda fuera del catch del POST:
+    // una falla de interfaz no debe presentarse como un fallo de la cita.
+    setCita(resultado.cita);
+    setDisponible(false);
+    setVerificacionPendiente(false);
+    Alert.alert('Cita reagendada',
+      'El nuevo horario quedó pendiente de confirmación administrativa.',
+      [{ text: 'Aceptar', onPress: () => navigation.goBack() }]);
   };
 
   return (
@@ -131,7 +180,12 @@ export default function ReagendarCitaScreen({ navigation, route }) {
               <Text style={styles.label}>Cita #{cita.id_cita}</Text>
               <Text style={styles.info}>Reporte: {cita.titulo_reporte || `#${cita.id_reporte}`}</Text>
               <Text style={styles.info}>Fecha y hora anterior: {cita.fecha_cita} a las {cita.hora_cita}</Text>
-              {!disponible && <Text style={styles.error}>Esta oportunidad ya no está disponible.</Text>}
+              {!disponible && <Text style={styles.error}>
+                {verificacionPendiente ? 'Comprueba el estado antes de volver a intentarlo.' :
+                  cita.reagendado_estado === 'utilizado'
+                    ? 'Esta cita ya fue reagendada y espera confirmación administrativa.'
+                    : 'Esta oportunidad ya no está disponible.'}
+              </Text>}
             </View>
 
             {disponible && (
@@ -207,6 +261,15 @@ export default function ReagendarCitaScreen({ navigation, route }) {
               </View>
             )}
           </>
+        )}
+        {(verificacionPendiente || error) && !cargando && (
+          <TouchableOpacity style={styles.guardar}
+            onPress={() => setRevision((actual) => actual + 1)}
+            disabled={guardando}
+            accessibilityRole="button"
+            accessibilityLabel="Comprobar estado de la cita">
+            <Text style={styles.guardarTexto}>Comprobar estado</Text>
+          </TouchableOpacity>
         )}
         <TouchableOpacity style={styles.cerrar} onPress={() => navigation.goBack()} disabled={guardando}>
           <Text style={styles.link}>Volver a notificaciones</Text>
