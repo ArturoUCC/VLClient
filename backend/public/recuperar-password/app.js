@@ -11,6 +11,8 @@
   const verConfirmacion = document.getElementById('ver-confirmacion');
   const boton = document.getElementById('enviar');
   const mensaje = document.getElementById('mensaje');
+  const coincidencia = document.getElementById('coincidencia-password');
+  const { evaluarPassword } = window.VLPasswordPolicy;
 
   const mostrar = (texto, tipo = 'error') => {
     mensaje.textContent = texto;
@@ -30,6 +32,21 @@
   configurarVisibilidad(password, verPassword, 'nueva contraseña');
   configurarVisibilidad(confirmacion, verConfirmacion, 'confirmación de contraseña');
 
+  const actualizarRequisitos = () => {
+    const evaluacion = evaluarPassword(password.value);
+    for (const [nombre, cumple] of Object.entries(evaluacion.requisitos)) {
+      document.querySelector(`[data-requisito="${nombre}"]`)
+        .classList.toggle('cumplido', cumple);
+    }
+    const coinciden = confirmacion.value.length > 0 &&
+      password.value === confirmacion.value;
+    coincidencia.textContent = coinciden ? 'Las contraseñas coinciden.' :
+      'Las contraseñas deben coincidir.';
+    coincidencia.classList.toggle('cumplido', coinciden);
+  };
+  password.addEventListener('input', actualizarRequisitos);
+  confirmacion.addEventListener('input', actualizarRequisitos);
+
   if (!token || !/^[a-f0-9]{64}$/.test(token)) {
     token = null;
     formulario.hidden = true;
@@ -40,8 +57,8 @@
   formulario.addEventListener('submit', async (evento) => {
     evento.preventDefault();
     const nuevaPassword = password.value;
-    if (nuevaPassword.length < 12 || new TextEncoder().encode(nuevaPassword).length > 72) {
-      mostrar('La contraseña debe tener al menos 12 caracteres y no superar 72 bytes.');
+    if (!evaluarPassword(nuevaPassword).valida) {
+      mostrar('La contraseña no cumple todos los requisitos indicados.');
       return;
     }
     if (nuevaPassword !== confirmacion.value) {

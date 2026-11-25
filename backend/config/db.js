@@ -1,5 +1,9 @@
 const { Pool } = require('pg');
-require('dotenv').config();
+if (process.env.VLCLIENT_TEST_MODE === '1') {
+  require('./entornoPruebas').afirmarProcesoPruebas();
+} else {
+  require('dotenv').config();
+}
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -9,7 +13,11 @@ const pool = new Pool({
 });
 
 pool.on('error', (error) => {
-  console.error('Error en conexión inactiva con PostgreSQL:', error.message);
+  if (process.env.VLCLIENT_TEST_MODE === '1') {
+    console.error('Error en conexión inactiva con PostgreSQL de pruebas');
+  } else {
+    console.error('Error en conexión inactiva con PostgreSQL:', error.message);
+  }
 });
 
 module.exports = pool;

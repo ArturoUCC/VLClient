@@ -36,6 +36,8 @@ input { width: 100%; height: 50px; padding: 0 14px; border: 1px solid #b9cad9; b
 .input-con-ojo input { padding-right: 58px; }
 input:focus-visible, button:focus-visible { outline: 3px solid #80b8e8; outline-offset: 2px; }
 .ayuda { margin: 7px 0 0; color: #63798d; font-size: 12px; }
+.requisitos { margin: 10px 0 0; padding-left: 20px; color: #9b302b; font-size: 12px; line-height: 1.7; }
+.requisitos li.cumplido, .ayuda.cumplido { color: #23633a; }
 button { width: 100%; min-height: 52px; border: 0; border-radius: 10px; background: #23558c; color: white; font: inherit; font-weight: 700; cursor: pointer; }
 button:hover { background: #1a456f; }
 button:disabled { opacity: .65; cursor: default; }

@@ -1,4 +1,7 @@
 const enviarRecuperacion = async (destinatario, token) => {
+  if (process.env.VLCLIENT_TEST_MODE === '1') {
+    throw new Error('Correo deshabilitado en pruebas');
+  }
   const { RESEND_API_KEY, RECOVERY_MAIL_FROM, RECOVERY_PUBLIC_URL } = process.env;
   if (!RESEND_API_KEY || !RECOVERY_MAIL_FROM || !RECOVERY_PUBLIC_URL) {
     throw new Error('Configuración de correo incompleta');

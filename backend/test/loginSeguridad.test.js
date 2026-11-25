@@ -32,7 +32,7 @@ const responder = () => ({
 const pedir = async (password = 'password-de-prueba') => {
   const res = responder();
   await iniciarSesion({ ip: '192.0.2.1', body: {
-    correo: 'Inquilino@example.test', password,
+    correo: '  INQUILINO@EXAMPLE.TEST  ', password,
   } }, res);
   return res;
 };
@@ -49,6 +49,7 @@ test('login aplica límites compartidos por IP y correo antes de buscar la cuent
     assert.deepEqual(limites.map((item) => item[0]), ['login-ip', 'login-correo']);
     assert.equal(limites[0][2], 20);
     assert.equal(limites[1][2], 5);
+    assert.equal(limites[1][1], 'inquilino@example.test');
   } finally {
     permitir = true;
     if (previo === undefined) delete process.env.JWT_SECRET;

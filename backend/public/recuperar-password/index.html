@@ -7,6 +7,7 @@
     <meta name="robots" content="noindex, nofollow">
     <title>Restablecer contraseña · VLClient</title>
     <link rel="stylesheet" href="/recuperar-password/estilos.css">
+    <script src="/recuperar-password/passwordPolicy.js" defer></script>
     <script src="/recuperar-password/app.js" defer></script>
   </head>
   <body>
@@ -26,7 +27,7 @@
             <label for="password">Nueva contraseña</label>
             <div class="input-con-ojo">
               <input id="password" name="password" type="password" autocomplete="new-password"
-                minlength="12" required aria-describedby="ayuda-password">
+                minlength="8" required aria-describedby="ayuda-password requisitos-password">
               <button id="ver-password" class="ver-password" type="button"
                 aria-label="Mostrar nueva contraseña" aria-controls="password" aria-pressed="false">
                 <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor"
@@ -38,14 +39,22 @@
                 </svg>
               </button>
             </div>
-            <p id="ayuda-password" class="ayuda">Mínimo 12 caracteres y máximo 72 bytes.</p>
+            <p id="ayuda-password" class="ayuda">Usa solo letras sin acentos, números y los símbolos indicados.</p>
+            <ul id="requisitos-password" class="requisitos" aria-live="polite">
+              <li data-requisito="longitud">Al menos 8 caracteres</li>
+              <li data-requisito="mayuscula">Una letra mayúscula</li>
+              <li data-requisito="numero">Un número</li>
+              <li data-requisito="especial">Un símbolo: ! @ # $ % &amp; * _ - + = ? . :</li>
+              <li data-requisito="caracteres">Solo caracteres permitidos</li>
+              <li data-requisito="bytes">Máximo 72 bytes</li>
+            </ul>
           </div>
 
           <div class="campo">
             <label for="confirmacion">Confirmar contraseña</label>
             <div class="input-con-ojo">
               <input id="confirmacion" name="confirmacion" type="password"
-                autocomplete="new-password" required>
+                autocomplete="new-password" required aria-describedby="coincidencia-password">
               <button id="ver-confirmacion" class="ver-password" type="button"
                 aria-label="Mostrar confirmación de contraseña" aria-controls="confirmacion" aria-pressed="false">
                 <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor"
@@ -57,6 +66,7 @@
                 </svg>
               </button>
             </div>
+            <p id="coincidencia-password" class="ayuda" aria-live="polite">Repite la contraseña.</p>
           </div>
 
           <button id="enviar" type="submit">Guardar nueva contraseña</button>

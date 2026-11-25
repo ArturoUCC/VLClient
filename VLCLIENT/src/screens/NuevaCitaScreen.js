@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -14,27 +15,13 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { crearCita } from '../services/api';
+import { crearCita, consultarDisponibilidad, obtenerMisCitas } from '../services/api';
 import { confirmarCitaDeBorrador } from '../services/citasBorradores';
-
-// Horarios de prueba disponibles para solicitar citas
-const HORARIOS = [
-  '09:00',
-  '10:00',
-  '11:00',
-  '12:00',
-  '13:00',
-  '14:00',
-  '15:00',
-  '16:00',
-  '17:00',
-];
+import { horarioPasadoMexico, inicioDiaMexicoLocal } from '../services/fechaCitas';
 
 // Obtener el inicio del día actual
 const obtenerFechaMinima = () => {
-  const hoy = new Date();
-  hoy.setHours(0, 0, 0, 0);
-  return hoy;
+  return inicioDiaMexicoLocal();
 };
 
 // Convertir fecha a formato YYYY-MM-DD para Neon
@@ -70,35 +57,36 @@ export default function NuevaCitaScreen({ navigation, route }) {
   const [hora, setHora] = useState('');
   const [observaciones, setObservaciones] = useState('');
   const [guardando, setGuardando] = useState(false);
+  const [horarios, setHorarios] = useState([]);
+  const [consultando, setConsultando] = useState(false);
+  const [verificacionPendiente, setVerificacionPendiente] = useState(false);
+  const envioEnCurso = useRef(false);
+
+  const cargarHorarios = useCallback(async (dia) => {
+    setConsultando(true);
+    try {
+      const resultado = await consultarDisponibilidad(token, { fecha: dia });
+      const disponibles = resultado.filter((item) => item.disponible).map((item) => item.hora);
+      setHorarios(disponibles);
+      return disponibles;
+    } catch (_) {
+      setHorarios([]);
+      throw new Error('No se pudieron consultar los horarios disponibles.');
+    } finally { setConsultando(false); }
+  }, [token]);
+
+  useFocusEffect(useCallback(() => {
+    if (fecha) void cargarHorarios(formatearFechaSQL(fecha)).catch(() => {});
+  }, [fecha, cargarHorarios]));
 
   // COMPROBAR SI UN HORARIO YA PASÓ
   const horarioPasado = (fechaSeleccionada, horario) => {
     if (!fechaSeleccionada) return false;
-
-    const hoy = new Date();
-
-    const fechaHoy = formatearFechaSQL(hoy);
-    const fechaElegida = formatearFechaSQL(fechaSeleccionada);
-
-    if (fechaElegida < fechaHoy) {
-      return true;
-    }
-
-    if (fechaElegida > fechaHoy) {
-      return false;
-    }
-
-    const [horas, minutos] = horario.split(':').map(Number);
-
-    const fechaHora = new Date(fechaSeleccionada);
-
-    fechaHora.setHours(horas, minutos, 0, 0);
-
-    return fechaHora <= hoy;
+    return horarioPasadoMexico(formatearFechaSQL(fechaSeleccionada), horario);
   };
 
   // SELECCIONAR FECHA DEL CALENDARIO
-  const seleccionarFecha = (evento, fechaSeleccionada) => {
+  const seleccionarFecha = async (evento, fechaSeleccionada) => {
 
     // Android cierra el selector automáticamente
     if (Platform.OS === 'android') {
@@ -124,10 +112,17 @@ export default function NuevaCitaScreen({ navigation, route }) {
       return;
     }
 
-    setFecha(seleccion);
-
-    // Limpiar la hora si ya no es válida
-    setHora('');
+    try {
+      const disponibles = await cargarHorarios(formatearFechaSQL(seleccion));
+      if (!disponibles.length) {
+        setFecha(null); setHora('');
+        Alert.alert('Fecha no disponible',
+          'El administrador no habilitó horarios libres para ese día.');
+        return;
+      }
+      setFecha(seleccion);
+      setHora('');
+    } catch (error) { Alert.alert('Disponibilidad', error.message); }
   };
 
   // NAVEGAR A REPORTES
@@ -158,7 +153,7 @@ const volverAInicio = () => {
   // GUARDAR CITA EN NEON
   const guardarCita = async () => {
 
-    if (guardando) return;
+    if (guardando || envioEnCurso.current || verificacionPendiente) return;
 
     // Validar sesión y reporte
     if (!token || !idReporte) {
@@ -217,6 +212,17 @@ const volverAInicio = () => {
     // Formato compatible con PostgreSQL
     const fechaLimpia = formatearFechaSQL(fecha);
 
+    envioEnCurso.current = true;
+    let disponibles;
+    try { disponibles = await cargarHorarios(fechaLimpia); }
+    catch (error) { envioEnCurso.current = false;
+      Alert.alert('Disponibilidad', error.message); return; }
+    if (!disponibles.includes(hora)) {
+      envioEnCurso.current = false;
+      Alert.alert('Horario ocupado', 'El horario cambió. Elige uno disponible.');
+      return;
+    }
+
     setGuardando(true);
 
     try {
@@ -257,14 +263,49 @@ const volverAInicio = () => {
       );
 
     } catch (error) {
-
-      Alert.alert(
-        'No se pudo programar',
-        error.message || 'Ocurrió un error al registrar la cita.'
-      );
+      if (error?.name === 'SesionExpiradaError') return;
+      if (error?.status && error.status !== 409) {
+        Alert.alert('No se pudo programar',
+          'Revisa la fecha, el horario y el reporte antes de reintentar.');
+        return;
+      }
+      try {
+        const citas = await obtenerMisCitas(token);
+        const confirmada = citas.find((item) => Number(item.id_reporte) === Number(idReporte) &&
+          item.fecha_cita === fechaLimpia && item.hora_cita === hora &&
+          ['programada', 'confirmada'].includes(item.estado));
+        if (confirmada) {
+          try { await confirmarCitaDeBorrador(token, idReporte, confirmada); }
+          catch (_) { /* Borradores volverá a conciliar. */ }
+          Alert.alert('Cita solicitada',
+            'La cita quedó registrada y pendiente de confirmación administrativa.',
+            [{ text: 'Aceptar', onPress: volverAInicio }]);
+          return;
+        }
+        if (!error?.status) {
+          setVerificacionPendiente(true);
+          Alert.alert('Resultado por verificar',
+            'No pudimos confirmar si se registró la cita. Comprueba su estado antes de reintentar.');
+          return;
+        }
+      } catch (_) {
+        if (error?.status) {
+          Alert.alert('No se pudo programar',
+            'El horario no está disponible. Consulta tus citas antes de reintentar.');
+        } else {
+          setVerificacionPendiente(true);
+          Alert.alert('Resultado por verificar',
+            'No se pudo comprobar si la cita quedó registrada. Comprueba el estado al recuperar internet.');
+        }
+        return;
+      }
+      Alert.alert('No se pudo programar',
+        error?.status === 409 ? 'El horario ya no está disponible.' :
+          'Revisa los datos o inténtalo nuevamente.');
 
     } finally {
       setGuardando(false);
+      envioEnCurso.current = false;
     }
   };
 
@@ -395,7 +436,10 @@ const volverAInicio = () => {
 
           <View style={styles.horarios}>
 
-            {HORARIOS.map((opcion) => {
+          {consultando ? <ActivityIndicator color="#23558C" /> :
+            horarios.length === 0 ? <Text style={styles.hint}>
+              No hay horarios disponibles para esta fecha.</Text> : null}
+          {horarios.map((opcion) => {
 
               const noDisponible =
                 fecha && horarioPasado(fecha, opcion);
@@ -433,8 +477,7 @@ const volverAInicio = () => {
           </View>
 
           <Text style={styles.hint}>
-            Los horarios son solicitudes sujetas
-            a disponibilidad.
+            Solo se muestran horarios habilitados y libres.
           </Text>
 
           {/* OBSERVACIONES */}
@@ -481,13 +524,29 @@ const volverAInicio = () => {
         </View>
 
         {/* GUARDAR CITA */}
+        {verificacionPendiente && <TouchableOpacity style={styles.submitButton}
+          onPress={async () => {
+            try {
+              const citas = await obtenerMisCitas(token);
+              const existente = citas.find((item) => Number(item.id_reporte) === Number(idReporte) &&
+                ['programada', 'confirmada'].includes(item.estado));
+              if (existente) {
+                setVerificacionPendiente(false);
+                Alert.alert('Cita encontrada', 'La cita ya está registrada.',
+                  [{ text: 'Aceptar', onPress: volverAInicio }]);
+              } else {
+                setVerificacionPendiente(false);
+                Alert.alert('Sin cita registrada', 'Puedes volver a solicitar el horario.');
+              }
+            } catch (_) { Alert.alert('Sin conexión', 'Inténtalo al recuperar internet.'); }
+          }}><Text style={styles.submitText}>Comprobar estado</Text></TouchableOpacity>}
         <TouchableOpacity
           style={[
             styles.submitButton,
             guardando && styles.disabled,
           ]}
           onPress={guardarCita}
-          disabled={guardando}
+          disabled={guardando || verificacionPendiente || consultando}
         >
 
           {guardando ? (

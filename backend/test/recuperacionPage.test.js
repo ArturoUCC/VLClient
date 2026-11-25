@@ -12,7 +12,7 @@ test('la página y sus recursos no se almacenan ni envían referer', async () =>
   try {
     const base = `http://127.0.0.1:${servidor.address().port}`;
     for (const ruta of ['/recuperar-password', '/recuperar-password/estilos.css',
-      '/recuperar-password/app.js']) {
+      '/recuperar-password/app.js', '/recuperar-password/passwordPolicy.js']) {
       const respuesta = await fetch(base + ruta);
       assert.equal(respuesta.status, 200);
       assert.match(respuesta.headers.get('cache-control'), /no-store/);

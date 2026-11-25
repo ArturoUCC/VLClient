@@ -1,9 +1,5 @@
 const pool = require('../config/db');
 
-const {
-  crearNotificacionSegura,
-} = require('../services/notificacionesService');
-
 const ZONA_HORARIA = 'America/Mexico_City';
 
 // OBTENER FECHA Y HORA ACTUAL EN MÉXICO
@@ -157,9 +153,25 @@ const reagendarCita = async (req, res) => {
       return res.status(400).json({ mensaje: 'Selecciona una fecha u hora diferente' });
     }
 
+    const fechaHabilitada = await client.query(
+      `SELECT habilitada FROM fechas_citas WHERE fecha=$1 FOR UPDATE`, [fecha_cita]);
+    if (!fechaHabilitada.rows[0]?.habilitada) {
+      await client.query('ROLLBACK');
+      transaccion = false;
+      return res.status(409).json({ mensaje: 'La fecha ya no está disponible' });
+    }
+    const horario = await client.query(
+      `SELECT h.id_horario FROM horarios_citas h
+       WHERE h.fecha=$1 AND h.hora=$2 AND h.habilitado=TRUE
+       FOR UPDATE OF h`, [fecha_cita, hora_cita]);
+    if (!horario.rows.length) {
+      await client.query('ROLLBACK');
+      transaccion = false;
+      return res.status(409).json({ mensaje: 'El horario ya no está disponible' });
+    }
     const actualizada = await client.query(
       `UPDATE citas
-       SET fecha_cita = $1, hora_cita = $2, estado = 'programada',
+       SET fecha_cita = $1, hora_cita = $2, id_horario=$4, estado = 'programada',
            reagendado_estado = 'utilizado', reagendado_usado_at = NOW()
        WHERE id_cita = $3 AND reagendado_estado = 'solicitado'
          AND reagendado_usado_at IS NULL
@@ -167,11 +179,13 @@ const reagendarCita = async (req, res) => {
          TO_CHAR(fecha_cita, 'YYYY-MM-DD') AS fecha_cita,
          TO_CHAR(hora_cita, 'HH24:MI') AS hora_cita,
          estado, reagendado_estado, reagendado_usado_at`,
-      [fecha_cita, hora_cita, idCita]
+      [fecha_cita, hora_cita, idCita, horario.rows[0].id_horario]
     );
     if (actualizada.rows.length !== 1) {
       throw new Error('La cita cambió durante el reagendado');
     }
+
+    // El trigger de citas actualiza la reserva y libera el horario anterior.
 
     // El aviso y la nueva fecha se confirman o revierten juntos.
     await client.query(
@@ -285,9 +299,35 @@ const crearCita = async (req, res) => {
     });
   }
 
+  let client;
+  let transaccion = false;
   try {
+    client = await pool.connect();
+    await client.query('BEGIN');
+    transaccion = true;
+    const fechaHabilitada = await client.query(
+      `SELECT habilitada FROM fechas_citas WHERE fecha=$1 FOR UPDATE`, [fecha_cita]);
+    if (!fechaHabilitada.rows[0]?.habilitada) {
+      await client.query('ROLLBACK'); transaccion = false;
+      return res.status(409).json({ mensaje: 'La fecha no está disponible' });
+    }
+    const horario = await client.query(
+      `SELECT h.id_horario FROM horarios_citas h
+       WHERE h.fecha=$1 AND h.hora=$2 AND h.habilitado=TRUE
+       FOR UPDATE OF h`, [fecha_cita, hora_cita]);
+    if (!horario.rows.length) {
+      await client.query('ROLLBACK'); transaccion = false;
+      return res.status(409).json({ mensaje: 'El horario no está disponible' });
+    }
+    const ocupada = await client.query(
+      `SELECT 1 FROM reservas_citas WHERE id_horario=$1`,
+      [horario.rows[0].id_horario]);
+    if (ocupada.rows.length) {
+      await client.query('ROLLBACK'); transaccion = false;
+      return res.status(409).json({ mensaje: 'El horario acaba de ocuparse' });
+    }
     // COMPROBAR QUE EL REPORTE PERTENECE AL INQUILINO
-    const reporte = await pool.query(
+    const reporte = await client.query(
       `SELECT r.id_reporte
        FROM reportes r
        INNER JOIN contratos c
@@ -302,13 +342,14 @@ const crearCita = async (req, res) => {
     );
 
     if (reporte.rows.length === 0) {
+      await client.query('ROLLBACK'); transaccion = false;
       return res.status(404).json({
         mensaje: 'No se encontró un reporte pendiente válido',
       });
     }
 
     // IMPEDIR UNA SEGUNDA CITA ACTIVA PARA EL MISMO REPORTE
-    const citaExistente = await pool.query(
+    const citaExistente = await client.query(
       `SELECT id_cita
        FROM citas
        WHERE id_reporte = $1
@@ -318,21 +359,23 @@ const crearCita = async (req, res) => {
     );
 
     if (citaExistente.rows.length > 0) {
+      await client.query('ROLLBACK'); transaccion = false;
       return res.status(409).json({
         mensaje: 'Este reporte ya tiene una cita activa',
       });
     }
 
     // GUARDAR LA CITA EN NEON
-    const resultado = await pool.query(
+    const resultado = await client.query(
       `INSERT INTO citas (
         id_reporte,
         fecha_cita,
         hora_cita,
+        id_horario,
         estado,
         observaciones
       )
-      VALUES ($1, $2, $3, 'programada', $4)
+      VALUES ($1, $2, $3, $4, 'programada', $5)
       RETURNING
         id_cita,
         id_reporte,
@@ -344,24 +387,25 @@ const crearCita = async (req, res) => {
         idReporte,
         fecha_cita,
         hora_cita,
+        horario.rows[0].id_horario,
         observaciones.trim(),
       ]
     );
 
     const citaCreada = resultado.rows[0];
 
-    // GENERAR NOTIFICACIÓN AUTOMÁTICA
-    // La cita ya quedó almacenada en Neon.
-    await crearNotificacionSegura({
-      idInquilino,
-      titulo: 'Cita de mantenimiento solicitada',
-      mensaje:
+    // El trigger de citas crea la reserva en esta misma transacción.
+    await client.query(
+      `INSERT INTO notificaciones(id_inquilino,titulo,mensaje,tipo)
+       VALUES($1,$2,$3,'cita')`, [idInquilino,
+      'Cita de mantenimiento solicitada',
         `Tu solicitud de cita #${citaCreada.id_cita} ` +
         `para el reporte #${idReporte} fue registrada ` +
         `para el ${fecha_cita} a las ${hora_cita}. ` +
         'La visita está pendiente de confirmación.',
-      tipo: 'cita',
-    });
+    ]);
+    await client.query('COMMIT');
+    transaccion = false;
 
     // RESPONDER A REACT NATIVE
     return res.status(201).json({
@@ -371,6 +415,10 @@ const crearCita = async (req, res) => {
 
   } catch (error) {
 
+    if (transaccion) {
+      try { await client.query('ROLLBACK'); } catch (_) { /* conservar error original */ }
+    }
+
     // HORARIO OCUPADO
     if (error.code === '23505') {
       return res.status(409).json({
@@ -378,14 +426,13 @@ const crearCita = async (req, res) => {
       });
     }
 
-    console.error(
-      'Error al crear cita:',
-      error.message
-    );
+    console.error('Error al crear cita');
 
     return res.status(500).json({
       mensaje: 'No se pudo registrar la cita',
     });
+  } finally {
+    if (client) client.release();
   }
 };
 

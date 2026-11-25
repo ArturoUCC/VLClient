@@ -7,21 +7,16 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { obtenerMisCitas, obtenerMisNotificaciones, reagendarCita } from '../services/api';
+import { obtenerMisCitas, obtenerMisNotificaciones, reagendarCita,
+  consultarDisponibilidad } from '../services/api';
 import { evaluarResultadoReagendado } from '../services/resultadoReagendado';
-
-const HORARIOS = [
-  '09:00', '10:00', '11:00', '12:00', '13:00',
-  '14:00', '15:00', '16:00', '17:00',
-];
+import { horarioPasadoMexico, inicioDiaMexicoLocal } from '../services/fechaCitas';
 
 const fechaSQL = (fecha) =>
   `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}-${String(fecha.getDate()).padStart(2, '0')}`;
 
 const inicioHoy = () => {
-  const fecha = new Date();
-  fecha.setHours(0, 0, 0, 0);
-  return fecha;
+  return inicioDiaMexicoLocal();
 };
 
 export default function ReagendarCitaScreen({ navigation, route }) {
@@ -34,9 +29,24 @@ export default function ReagendarCitaScreen({ navigation, route }) {
   const [fecha, setFecha] = useState(null);
   const [hora, setHora] = useState('');
   const [mostrarCalendario, setMostrarCalendario] = useState(false);
+  const [horarios, setHorarios] = useState([]);
+  const [consultando, setConsultando] = useState(false);
   const [verificacionPendiente, setVerificacionPendiente] = useState(false);
   const [revision, setRevision] = useState(0);
   const envioEnCurso = useRef(false);
+
+  const cargarHorarios = useCallback(async (dia) => {
+    setConsultando(true);
+    try {
+      const datos = await consultarDisponibilidad(token, { fecha: dia });
+      const libres = datos.filter((item) => item.disponible).map((item) => item.hora);
+      setHorarios(libres);
+      return libres;
+    } catch (_) {
+      setHorarios([]);
+      throw new Error('No se pudieron consultar los horarios disponibles.');
+    } finally { setConsultando(false); }
+  }, [token]);
 
   useFocusEffect(useCallback(() => {
     let activo = true;
@@ -77,13 +87,13 @@ export default function ReagendarCitaScreen({ navigation, route }) {
     return () => { activo = false; };
   }, [token, idCita, idNotificacion, revision]));
 
+  useFocusEffect(useCallback(() => {
+    if (fecha) void cargarHorarios(fechaSQL(fecha)).catch(() => {});
+  }, [fecha, cargarHorarios]));
+
   const horarioPasado = (fechaElegida, opcion) => {
     if (!fechaElegida) return true;
-    const ahora = new Date();
-    const seleccion = new Date(fechaElegida);
-    const [h, m] = opcion.split(':').map(Number);
-    seleccion.setHours(h, m, 0, 0);
-    return seleccion <= ahora;
+    return horarioPasadoMexico(fechaSQL(fechaElegida), opcion);
   };
 
   const confirmar = async () => {
@@ -103,6 +113,16 @@ export default function ReagendarCitaScreen({ navigation, route }) {
     }
     envioEnCurso.current = true;
     setGuardando(true);
+    let libres;
+    try { libres = await cargarHorarios(nuevaFecha); }
+    catch (error) {
+      setGuardando(false); envioEnCurso.current = false;
+      Alert.alert('Disponibilidad', error.message); return;
+    }
+    if (!libres.includes(hora)) {
+      setGuardando(false); envioEnCurso.current = false;
+      Alert.alert('Horario ocupado', 'Elige otro horario disponible.'); return;
+    }
     let resultado;
     try {
       resultado = await reagendarCita(token, idCita, {
@@ -208,12 +228,20 @@ export default function ReagendarCitaScreen({ navigation, route }) {
                       mode="date"
                       display={Platform.OS === 'ios' ? 'inline' : 'default'}
                       minimumDate={inicioHoy()}
-                      onChange={(evento, seleccion) => {
+                      onChange={async (evento, seleccion) => {
                         if (Platform.OS === 'android') setMostrarCalendario(false);
                         if (evento.type === 'dismissed' || !seleccion) return;
                         const elegida = new Date(seleccion);
                         elegida.setHours(0, 0, 0, 0);
                         if (elegida < inicioHoy()) return;
+                        try {
+                          const libres = await cargarHorarios(fechaSQL(elegida));
+                          if (!libres.length) {
+                            Alert.alert('Fecha no disponible',
+                              'No hay horarios habilitados y libres para ese día.');
+                            setFecha(null); setHora(''); return;
+                          }
+                        } catch (error) { Alert.alert('Disponibilidad', error.message); return; }
                         setFecha(elegida);
                         setHora('');
                       }}
@@ -231,7 +259,10 @@ export default function ReagendarCitaScreen({ navigation, route }) {
 
                 <Text style={styles.label}>Nuevo horario</Text>
                 <View style={styles.horarios}>
-                  {HORARIOS.map((opcion) => {
+                  {consultando ? <ActivityIndicator color="#23558C" /> :
+                    horarios.length === 0 ? <Text style={styles.hint}>
+                      No hay horarios disponibles para esta fecha.</Text> : null}
+                  {horarios.map((opcion) => {
                     const deshabilitado = !fecha || horarioPasado(fecha, opcion);
                     return (
                       <TouchableOpacity
@@ -252,7 +283,7 @@ export default function ReagendarCitaScreen({ navigation, route }) {
                 <TouchableOpacity
                   style={[styles.guardar, guardando && styles.deshabilitada]}
                   onPress={confirmar}
-                  disabled={guardando}
+                  disabled={guardando || consultando}
                   accessibilityRole="button"
                 >
                   {guardando ? <ActivityIndicator color="#FFFFFF" /> :

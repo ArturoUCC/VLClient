@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const { randomBytes, createHash } = require('node:crypto');
 const { enviarRecuperacion } = require('../services/correoRecuperacionService');
 const { consumirLimite } = require('../services/limiteRecuperacionService');
+const { evaluarPassword } = require('../utils/passwordPolicy');
 
 const RESPUESTA_SOLICITUD = {
   mensaje: 'Si existe una cuenta asociada, recibirás instrucciones por correo.'
@@ -193,10 +194,11 @@ const solicitarRecuperacion = async (req, res) => {
 
 const restablecerPassword = async (req, res) => {
   const { token, nuevaPassword } = req.body || {};
-  if (typeof token !== 'string' || !/^[a-f0-9]{64}$/.test(token) ||
-      typeof nuevaPassword !== 'string' || nuevaPassword.length < 12 ||
-      Buffer.byteLength(nuevaPassword, 'utf8') > 72) {
-    return res.status(400).json({ mensaje: 'Enlace o contraseña inválidos' });
+  if (typeof token !== 'string' || !/^[a-f0-9]{64}$/.test(token)) {
+    return res.status(400).json(ERROR_TOKEN);
+  }
+  if (!evaluarPassword(nuevaPassword).valida) {
+    return res.status(400).json({ mensaje: 'La contraseña no cumple los requisitos indicados' });
   }
 
   try {

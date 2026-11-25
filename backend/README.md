@@ -1,5 +1,14 @@
 # Backend de VLClient
 
+El arranque aislado de la rama de pruebas administrativas, sus comandos y
+límites de servicios externos se explican en [PRUEBAS_ADMIN.md](PRUEBAS_ADMIN.md).
+
+La actualización administrativa y la nueva disponibilidad de citas están
+preparadas localmente. Su orden de diagnóstico, migración manual, verificación,
+creación del primer administrador y limitaciones se documenta en
+[ACTUALIZACION_ADMIN.md](ACTUALIZACION_ADMIN.md). **No se han ejecutado las
+migraciones ni se han desplegado estas rutas.**
+
 El registro de dispositivos y los comandos manuales de envío push están documentados en [PUSH.md](../PUSH.md). Para la primera versión, el envío remoto queda desactivado **en el código local**: el comando `--procesar` exige `PUSH_REMOTE_ENABLED=true`, que no debe configurarse hasta terminar las pruebas nativas y aprobar la activación. Este cambio no afecta todavía a la versión desplegada en Render. Las notificaciones internas siguen funcionando. No hay procesamiento automático ni Cron Job activo.
 
 API Express de VLClient. El proceso web se inicia con `npm start`; los recordatorios de renta se ejecutan mediante un proceso Node independiente.

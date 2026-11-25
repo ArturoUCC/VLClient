@@ -2,6 +2,7 @@ const express = require('express');
 const multer = require('multer');
 
 const { verificarToken } = require('../middleware/authMiddleware');
+const { bloquearExternosPruebas } = require('../middleware/bloquearExternosPruebas');
 
 const {
   subirFotosReporte,
@@ -55,6 +56,7 @@ const recibirFotos = (req, res, next) => {
 router.post(
   '/:idReporte/sincronizar',
   verificarToken,
+  bloquearExternosPruebas,
   recibirFotos,
   subirFotoIdempotente
 );
@@ -62,6 +64,7 @@ router.post(
 router.post(
   '/:idReporte',
   verificarToken,
+  bloquearExternosPruebas,
   recibirFotos,
   subirFotosReporte
 );

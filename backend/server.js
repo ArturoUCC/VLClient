@@ -1,4 +1,8 @@
-require('dotenv').config();
+if (process.env.VLCLIENT_TEST_MODE === '1') {
+  require('./config/entornoPruebas').afirmarProcesoPruebas();
+} else {
+  require('dotenv').config();
+}
 
 const express = require('express');
 const helmet = require('helmet');
@@ -17,11 +21,14 @@ const citasRoutes = require('./routes/citasRoutes');
 const notificacionesRoutes = require('./routes/notificacionesRoutes');
 const pushDispositivosRoutes = require('./routes/pushDispositivosRoutes');
 const recuperacionPageRoutes = require('./routes/recuperacionPageRoutes');
+const adminRoutes = require('./routes/adminRoutes');
+const { medirSolicitud } = require('./middleware/medirSolicitud');
 
 // Middlewares
 app.use(helmet());
 // La app nativa no necesita CORS y la página de recuperación usa el mismo origen.
 app.use(express.json());
+app.use(medirSolicitud);
 app.use('/recuperar-password', recuperacionPageRoutes);
 //app.use('/api/inquilinos', inquilinosRoutes);
 app.use('/api/estados-de-cuenta', estadosCuentaRoutes);
@@ -33,6 +40,7 @@ app.use('/api/reporte-fotos', reporteFotosRoutes);
 app.use('/api/citas', citasRoutes);
 app.use('/api/notificaciones', notificacionesRoutes);
 app.use('/api/push', pushDispositivosRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Ruta para comprobar que funciona la API
 app.get('/api', (req, res) => {

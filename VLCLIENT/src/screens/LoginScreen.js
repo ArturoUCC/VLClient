@@ -13,7 +13,8 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { loginInquilino } from '../services/api';
+import { iniciarSesion as autenticar } from '../services/api';
+import { guardarSesion } from '../services/sesionPersistida';
 import { registrarPushTrasLogin, pushRemotoHabilitado } from '../services/pushDispositivo';
 import { SesionContext } from '../context/SesionContext';
 
@@ -49,13 +50,14 @@ const iniciarSesion = async () => {
   setCargando(true);
 
   try {
-    const respuesta = await loginInquilino(
-      correo.trim(),
-      password
-    );
+    const respuesta = await autenticar(correo.trim(), password);
+    const administrador = respuesta.rol === 'administrador';
+    if (!administrador && respuesta.rol !== 'inquilino') {
+      throw new Error('Respuesta de sesión inválida');
+    }
 
     // Una falla push no impide iniciar sesión ni revela el token en registros.
-    if (pushRemotoHabilitado) {
+    if (!administrador && pushRemotoHabilitado) {
       try {
         await registrarPushTrasLogin(respuesta.token);
       } catch (_) {
@@ -65,22 +67,28 @@ const iniciarSesion = async () => {
 
     // El token se pasa temporalmente por navegación.
     // Después implementaremos su almacenamiento seguro.
-    activarSesion(respuesta.token);
+    await guardarSesion(respuesta.token, respuesta.rol).catch(() => {});
+    activarSesion(respuesta.token, respuesta.rol);
     setPassword('');
     navigation.reset({
       index: 0,
-      routes: [{ name: 'Inicio', params: {
-        token: respuesta.token,
-        inquilino: respuesta.inquilino,
-      } }],
+      routes: [administrador
+        ? { name: 'AdminArea', params: { token: respuesta.token,
+          administrador: respuesta.administrador } }
+        : { name: 'Inicio', params: { token: respuesta.token,
+          inquilino: respuesta.inquilino } }],
     });
 
   } catch (error) {
+    const mensajesConocidos = ['Credenciales incorrectas',
+      'Demasiados intentos. Intenta más tarde',
+      'Correo y contraseña son obligatorios'];
     Alert.alert(
       'Error de inicio de sesión',
       error.message === 'Network request failed'
         ? 'No se pudo conectar con el servidor. Revisa la red y el backend.'
-        : error.message
+        : mensajesConocidos.includes(error.message) ? error.message
+          : 'No se pudo iniciar sesión. Inténtalo de nuevo más tarde.'
     );
   } finally {
     setCargando(false);
@@ -106,7 +114,7 @@ const iniciarSesion = async () => {
 
           <Text style={styles.title}>Bienvenido de nuevo</Text>
           <Text style={styles.subtitle}>
-            Ingresa a tu cuenta de inquilino
+            Ingresa con tu correo electrónico y contraseña
           </Text>
 
           <View style={styles.form}>

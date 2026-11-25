@@ -37,6 +37,66 @@ const obtenerMisReportes = async (req, res) => {
   }
 };
 
+const obtenerMisReportesResumen = async (req, res) => {
+  const pagina = Number(req.query.pagina || 1);
+  const limite = Number(req.query.limite || 20);
+  if (!Number.isSafeInteger(pagina) || pagina < 1 ||
+      !Number.isSafeInteger(limite) || limite < 1 || limite > 50) {
+    return res.status(400).json({ mensaje: 'Paginación inválida' });
+  }
+  try {
+    const inicioConsulta = process.hrtime.bigint();
+    const resultado = await pool.query(
+      `WITH propios AS (
+         SELECT r.id_reporte,r.titulo,r.descripcion,r.categoria,r.prioridad,
+                r.estado,r.fecha_reporte,
+                COUNT(*) OVER()::integer AS total
+         FROM reportes r JOIN contratos c ON c.id_contrato=r.id_contrato
+         WHERE c.id_inquilino=$1
+         ORDER BY r.fecha_reporte DESC,r.id_reporte DESC
+         LIMIT $2 OFFSET $3
+       )
+       SELECT p.*,
+         COALESCE(f.fotos,'[]'::json) AS fotos,
+         COALESCE(ci.citas,'[]'::json) AS citas
+       FROM propios p
+       LEFT JOIN LATERAL (
+         SELECT json_agg(json_build_object('id_foto',rf.id_foto,
+           'url_foto',rf.url_foto) ORDER BY rf.id_foto) AS fotos
+         FROM reporte_fotos rf WHERE rf.id_reporte=p.id_reporte
+       ) f ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT json_agg(json_build_object('id_cita',c.id_cita,
+           'id_reporte',c.id_reporte,
+           'fecha_cita',TO_CHAR(c.fecha_cita,'YYYY-MM-DD'),
+           'hora_cita',TO_CHAR(c.hora_cita,'HH24:MI'),
+           'estado',c.estado,'observaciones',c.observaciones)
+           ORDER BY c.fecha_cita DESC,c.id_cita DESC) AS citas
+         FROM citas c WHERE c.id_reporte=p.id_reporte
+       ) ci ON TRUE
+       ORDER BY p.fecha_reporte DESC,p.id_reporte DESC`,
+      [req.usuario.id_inquilino, limite, (pagina - 1) * limite]);
+    if (process.env.PERF_DIAGNOSTICS === '1') {
+      console.info('Rendimiento consulta reportes', {
+        milisegundos: Number((process.hrtime.bigint() - inicioConsulta) / 1000000n),
+        filas: resultado.rows.length,
+      });
+    }
+    return res.json({ total: resultado.rows[0]?.total || 0,
+      reportes: resultado.rows.map(({ total, ...fila }) => ({
+        ...fila, fotos: fila.fotos.map((foto) => {
+          const url = foto.url_foto;
+          return { ...foto, url_miniatura: typeof url === 'string' &&
+            /^https:\/\/res\.cloudinary\.com\//.test(url)
+              ? url.replace('/upload/', '/upload/c_limit,w_320,h_320,q_auto,f_auto/')
+              : url };
+        }),
+      })) });
+  } catch (_) {
+    return res.status(503).json({ mensaje: 'No se pudieron consultar los reportes' });
+  }
+};
+
 // CREAR UN NUEVO REPORTE DE MANTENIMIENTO
 const crearReporte = async (req, res) => {
   try {
@@ -197,5 +257,6 @@ const crearReporte = async (req, res) => {
 
 module.exports = {
   obtenerMisReportes,
+  obtenerMisReportesResumen,
   crearReporte,
 };

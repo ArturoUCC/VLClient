@@ -89,7 +89,7 @@ test('la solicitud no enumera correos y almacena solo el hash', async () => {
 
 test('el token se consume una vez y revoca los JWT anteriores', async () => {
   const anterior = jwt.sign({ id_inquilino: 7, rol: 'inquilino', sesion_version: 0 }, 'prueba');
-  const req = { body: { token: correoEnviado.token, nuevaPassword: 'NuevaClaveSegura123' }, ip: '127.0.0.1' };
+  const req = { body: { token: correoEnviado.token, nuevaPassword: 'NuevaClaveSegura123!' }, ip: '127.0.0.1' };
   expirada = true;
   const vencido = respuesta();
   await auth.restablecerPassword(req, vencido);

@@ -1,4 +1,6 @@
-const API_URL = "https://vlclient-backend.onrender.com/api";
+import { elegirApiUrl } from './apiConfig';
+const API_URL = elegirApiUrl(process.env.EXPO_PUBLIC_API_URL,
+  process.env.EXPO_PUBLIC_VLCLIENT_TEST_MODE);
 
 import { File } from 'expo-file-system';
 import { fetch as expoFetch } from 'expo/fetch';
@@ -30,7 +32,7 @@ export const backendDisponible = async (token) => {
 };
 
 // Iniciar sesión
-export const loginInquilino = async (correo, password) => {
+export const iniciarSesion = async (correo, password) => {
   const response = await solicitud(`${API_URL}/auth/login`, {
     method: 'POST',
     headers: {
@@ -48,6 +50,138 @@ export const loginInquilino = async (correo, password) => {
     throw new Error(data.mensaje || 'Error al iniciar sesión');
   }
 
+  return data;
+};
+
+export const loginInquilino = iniciarSesion;
+
+// La ruta administrativa usa un JWT y una clave de firma diferentes.
+export const loginAdministrador = async (correo, password) => {
+  const response = await solicitud(`${API_URL}/admin/auth/login`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ correo, password }),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.mensaje || 'No se pudo iniciar sesión');
+  return data;
+};
+
+export const obtenerResumenAdmin = async (token) => {
+  const response = await solicitud(`${API_URL}/admin/resumen`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.mensaje || 'No se pudo consultar el resumen');
+  return data.resumen;
+};
+
+export const obtenerInquilinosAdmin = async (token, filtros = {}) => {
+  const params = new URLSearchParams(filtros);
+  const response = await solicitud(`${API_URL}/admin/inquilinos?${params}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.mensaje || 'No se pudieron consultar los inquilinos');
+  return data;
+};
+
+export const obtenerDetalleInquilinoAdmin = async (token, id) => {
+  const response = await solicitud(`${API_URL}/admin/inquilinos/${Number(id)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.mensaje || 'No se pudo consultar el detalle');
+  return data;
+};
+
+export const buscarPropiedadesAdmin = async (token, buscar = '') => {
+  const params = new URLSearchParams({ buscar });
+  const response = await solicitud(`${API_URL}/admin/propiedades?${params}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.mensaje || 'No se pudieron buscar propiedades');
+  return data.propiedades || [];
+};
+
+export const registrarInquilinoAdmin = async (token, datos) => {
+  const response = await solicitud(`${API_URL}/admin/inquilinos`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}` },
+    body: JSON.stringify(datos),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.mensaje || 'No se pudo registrar al inquilino');
+  return data;
+};
+
+export const obtenerCitasAdmin = async (token, filtros = {}) => {
+  const params = new URLSearchParams(filtros);
+  const response = await solicitud(`${API_URL}/admin/citas?${params}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.mensaje || 'No se pudieron consultar las citas');
+  return data;
+};
+
+export const ejecutarAccionCitaAdmin = async (token, id, accion) => {
+  const permitidas = ['confirmar', 'solicitar-reagendado',
+    'segundo-horario-no-disponible'];
+  if (!permitidas.includes(accion)) throw new Error('Acción no permitida');
+  const response = await solicitud(`${API_URL}/admin/citas/${Number(id)}/${accion}`, {
+    method: 'POST', headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.mensaje || 'No se pudo actualizar la cita');
+  return data;
+};
+
+export const cerrarSesionAdmin = async (token) => {
+  const response = await solicitud(`${API_URL}/admin/auth/logout`, {
+    method: 'POST', headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error('No se pudo cerrar la sesión administrativa');
+};
+
+export const obtenerPerfilAdmin = async (token) => {
+  const response = await solicitud(`${API_URL}/admin/auth/perfil`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.mensaje || 'No se pudo consultar el perfil');
+  return data.administrador;
+};
+
+export const consultarDisponibilidad = async (token, filtros, administrador = false) => {
+  const params = new URLSearchParams(filtros);
+  const ruta = administrador ? 'admin/disponibilidad' : 'citas/disponibilidad';
+  const response = await solicitud(`${API_URL}/${ruta}?${params}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.mensaje || 'No se pudo consultar la disponibilidad');
+  return data.horarios || [];
+};
+
+export const cambiarFechaAdmin = async (token, fecha, habilitada) => {
+  const response = await solicitud(`${API_URL}/admin/disponibilidad/fechas/${fecha}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}` }, body: JSON.stringify({ habilitada }),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.mensaje || 'No se pudo cambiar la fecha');
+  return data;
+};
+
+export const cambiarHorarioAdmin = async (token, fecha, hora, habilitado) => {
+  const response = await solicitud(`${API_URL}/admin/disponibilidad/fechas/${fecha}/horarios/${hora}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}` }, body: JSON.stringify({ habilitado }),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.mensaje || 'No se pudo cambiar el horario');
   return data;
 };
 
@@ -184,6 +318,15 @@ export const obtenerMisReportes = async (token) => {
   }
 
   return data.reportes || [];
+};
+
+export const obtenerReportesResumen = async (token, pagina = 1) => {
+  const response = await solicitud(`${API_URL}/reportes/mis-reportes-resumen?pagina=${pagina}&limite=20`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.mensaje || 'No se pudieron consultar los reportes');
+  return data;
 };
 
 
@@ -340,9 +483,9 @@ export const crearCita = async (token, cita) => {
   const data = await response.json();
 
   if (!response.ok) {
-    throw new Error(
-      data.mensaje || 'No se pudo registrar la cita'
-    );
+    const error = new Error(data.mensaje || 'No se pudo registrar la cita');
+    error.status = response.status;
+    throw error;
   }
 
   return data;

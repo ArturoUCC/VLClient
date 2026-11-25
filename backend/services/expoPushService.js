@@ -10,6 +10,9 @@ class ExpoPushError extends Error {
 }
 
 const solicitarExpo = async (url, body, { fetchImpl = fetch, accessToken = process.env.EXPO_ACCESS_TOKEN } = {}) => {
+  if (process.env.VLCLIENT_TEST_MODE === '1') {
+    throw new ExpoPushError('permanente');
+  }
   let response;
   try {
     response = await fetchImpl(url, {

@@ -12,7 +12,7 @@ test('la primera versión mantiene desactivado el registro push remoto', () => {
   assert.equal(estaHabilitadoPushRemoto(configuracion.expo.extra), false);
   assert.equal(estaHabilitadoPushRemoto({}), false);
   assert.equal(estaHabilitadoPushRemoto({ pushRemotoHabilitado: true }), true);
-  assert.equal(configuracion.expo.android.package, undefined);
+  assert.equal(configuracion.expo.android.package, 'com.arturop.vlclient.demo');
   assert.equal(configuracion.expo.ios.bundleIdentifier, undefined);
 });
 

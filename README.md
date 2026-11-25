@@ -6,11 +6,17 @@ En la primera versión, las **notificaciones internas** están disponibles. Las 
 
 La documentación operativa del servidor está en [backend/README.md](backend/README.md).
 
+La actualización administrativa y de disponibilidad se encuentra en desarrollo
+local. Las migraciones y las verificaciones manuales pendientes están en
+[backend/ACTUALIZACION_ADMIN.md](backend/ACTUALIZACION_ADMIN.md); el envío del
+registro de inquilinos ya está implementado localmente, pero requiere ejecutar
+las migraciones, desplegar y probar con una propiedad disponible.
+
 **Decisión pendiente de Vives Lara:** la pantalla de estado de cuenta consulta la mensualidad más reciente del contrato activo; no hay historial de estados de cuenta en la app. El historial de pagos sí está disponible.
 
 ## Borradores de reportes
 
-Desde **Mis reportes → Ver borradores guardados** se pueden crear, editar y eliminar borradores en el dispositivo. El texto se guarda mientras se escribe y las fotos seleccionadas se copian al directorio persistente de la app. Los borradores se consultan únicamente después de iniciar sesión con el mismo inquilino. Si se cierra la app sin conexión, el borrador permanece guardado, pero será necesario volver a iniciar sesión cuando haya red; la app no conserva un JWT para acceso sin conexión.
+Desde **Mis reportes → Ver borradores guardados** se pueden crear, editar y eliminar borradores en el dispositivo. El texto se guarda mientras se escribe y las fotos seleccionadas se copian al directorio persistente de la app. Los borradores se consultan únicamente después de iniciar sesión con el mismo inquilino. La sesión se guarda en el almacenamiento seguro del dispositivo y se valida con el backend al volver a abrir la aplicación. Si no hay red, el borrador permanece guardado, pero no se restaura la sesión hasta que pueda validarse.
 
 La sincronización idempotente está implementada localmente. Se reintenta al recuperar la conexión mientras la app está abierta, al iniciar sesión y al volver al primer plano. La migración de claves ya fue aplicada manualmente en Neon; faltan el despliegue y una prueba real en Expo Go antes de considerar terminada la función. [REPORTES.md](REPORTES.md) detalla el flujo y la prueba con dos inquilinos.
 

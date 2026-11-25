@@ -19,5 +19,7 @@ router.use((req, res, next) => {
 router.get('/', (req, res) => res.sendFile(path.join(archivos, 'index.html')));
 router.get('/estilos.css', (req, res) => res.sendFile(path.join(archivos, 'estilos.css')));
 router.get('/app.js', (req, res) => res.sendFile(path.join(archivos, 'app.js')));
+router.get('/passwordPolicy.js', (req, res) =>
+  res.sendFile(path.join(__dirname, '..', 'utils', 'passwordPolicy.js')));
 
 module.exports = router;

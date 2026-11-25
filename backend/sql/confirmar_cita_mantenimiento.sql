@@ -12,6 +12,8 @@ WITH objetivo AS (
   WHERE ci.id_cita = 0                -- Reemplazar por id_cita
     AND c.id_inquilino = 0           -- Reemplazar por id_inquilino
     AND ci.estado = 'programada'
+    AND ci.reagendado_estado <> 'solicitado'
+    AND ci.segundo_horario_no_disponible_at IS NULL
 ),
 cita_confirmada AS (
   UPDATE public.citas AS ci
@@ -19,6 +21,8 @@ cita_confirmada AS (
   FROM objetivo AS o
   WHERE ci.id_cita = o.id_cita
     AND ci.estado = 'programada'
+    AND ci.reagendado_estado <> 'solicitado'
+    AND ci.segundo_horario_no_disponible_at IS NULL
   RETURNING ci.id_cita, ci.id_reporte, ci.fecha_cita, ci.hora_cita
 ),
 aviso AS (

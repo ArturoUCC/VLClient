@@ -10,6 +10,8 @@ let horarioOcupado;
 let consultaBloqueo;
 let notificaciones;
 let fallaAviso;
+let fechaDisponible;
+let horarioDisponible;
 
 const pool = {
   connect: async () => {
@@ -41,6 +43,13 @@ const pool = {
         }
         return { rows: [{ ...cita }] };
       }
+      if (sql.includes('FROM fechas_citas')) {
+        return { rows: [{ habilitada: fechaDisponible }] };
+      }
+      if (sql.includes('FROM horarios_citas')) {
+        return { rows: horarioDisponible ? [{ id_horario: 9 }] : [] };
+      }
+      if (sql.includes('UPDATE reservas_citas')) return { rows: [{ id_cita: 6 }] };
       if (sql.includes('UPDATE citas')) {
         if (horarioOcupado) {
           const error = new Error('unique violation');
@@ -102,7 +111,22 @@ const reiniciar = () => {
   bloqueada = false;
   notificaciones = [];
   fallaAviso = false;
+  fechaDisponible = true;
+  horarioDisponible = true;
 };
+
+test('reagendar conserva el horario anterior si la fecha o el nuevo slot se deshabilitaron', async () => {
+  reiniciar(); fechaDisponible = false;
+  assert.equal((await (async () => { const res = respuesta();
+    await reagendarCita(solicitud(), res); return res; })()).statusCode, 409);
+  assert.equal(cita.hora_cita, '09:00');
+  assert.equal(cita.reagendado_estado, 'solicitado');
+  reiniciar(); horarioDisponible = false;
+  assert.equal((await (async () => { const res = respuesta();
+    await reagendarCita(solicitud(), res); return res; })()).statusCode, 409);
+  assert.equal(cita.hora_cita, '09:00');
+  assert.equal(notificaciones.length, 0);
+});
 
 test('solo el inquilino propietario con la notificación vinculada puede reagendar', async () => {
   reiniciar();
