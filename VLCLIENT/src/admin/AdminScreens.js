@@ -14,6 +14,8 @@ import { validarRegistroInquilino } from '../services/validarRegistroInquilino';
 import { SelectorInquilino, SelectorOpciones } from './SelectorFiltrosCitas';
 import { contarFiltrosActivos, parametrosCitas } from './filtrosCitas';
 import { fuenteGaleria } from './fuenteGaleria';
+import SelectorHorarioAdmin from './SelectorHorarioAdmin';
+import { horarioHabilitado } from './horariosAdmin';
 
 const Boton = ({ texto, onPress, disabled, secundario = false, icono }) =>
   <TouchableOpacity style={[s.boton, secundario && s.secundario,
@@ -238,7 +240,7 @@ export function AdminCalendario({ token }) {
   const [fecha, setFecha] = useState(new Date());
   const [calendario, setCalendario] = useState(false);
   const [horarios, setHorarios] = useState([]);
-  const [hora, setHora] = useState('09:00');
+  const [hora, setHora] = useState('');
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState('');
   const dia = fechaSQL(fecha);
@@ -290,11 +292,17 @@ export function AdminCalendario({ token }) {
         onPress={() => ejecutar(() => cambiarHorarioAdmin(token, dia, h.hora,
           !h.horario_habilitado))} />
     </View>)}
-    <Text style={s.etiqueta}>Agregar horario entre 09:00 y 17:00</Text>
-    <TextInput style={s.input} value={hora} onChangeText={setHora}
-      placeholder="HH:MM" keyboardType="numbers-and-punctuation" />
-    <Boton texto="Habilitar horario" disabled={ocupado}
-      onPress={() => ejecutar(() => cambiarHorarioAdmin(token, dia, hora, true))} />
+    <Text style={s.etiqueta}>Habilitar horario entre 08:00 y 18:00</Text>
+    <SelectorHorarioAdmin valor={hora} horarios={horarios}
+      onChange={setHora} disabled={ocupado} />
+    {hora && horarioHabilitado(horarios, hora) &&
+      <Text style={s.etiqueta}>Este horario ya está habilitado para la fecha.</Text>}
+    <Boton texto="Habilitar horario" disabled={ocupado || !hora ||
+      horarioHabilitado(horarios, hora)}
+      onPress={() => ejecutar(async () => {
+        await cambiarHorarioAdmin(token, dia, hora, true);
+        setHora('');
+      })} />
   </ScrollView></Contenedor>;
 }
 

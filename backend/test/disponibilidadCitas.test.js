@@ -61,10 +61,10 @@ finally { Module._load = originalLoad; }
 const respuesta = () => ({ statusCode: 200,
   status(n) { this.statusCode = n; return this; },
   json(v) { this.body = v; return this; } });
-const solicitar = async (inquilino = 1) => {
+const solicitar = async (inquilino = 1, hora = '10:00') => {
   const res = respuesta();
   await crearCita({ usuario: { id_inquilino: inquilino }, body: {
-    id_reporte: 4, fecha_cita: '2099-12-10', hora_cita: '10:00',
+    id_reporte: 4, fecha_cita: '2099-12-10', hora_cita: hora,
     observaciones: '',
   } }, res);
   return res;
@@ -99,4 +99,17 @@ test('una fecha o un horario no habilitados se rechazan antes del INSERT', async
   reiniciar(); horarioHabilitado = false;
   assert.equal((await solicitar()).statusCode, 409);
   assert.equal(citas, 0);
+});
+
+test('los límites 08:00 y 18:00 se pueden reservar; fuera del rango se rechaza', async () => {
+  for (const hora of ['08:00', '18:00']) {
+    reiniciar();
+    assert.equal((await solicitar(1, hora)).statusCode, 201);
+    assert.equal(citas, 1);
+  }
+  for (const hora of ['07:30', '18:30']) {
+    reiniciar();
+    assert.equal((await solicitar(1, hora)).statusCode, 400);
+    assert.equal(citas, 0);
+  }
 });

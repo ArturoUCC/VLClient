@@ -107,8 +107,8 @@ const reagendarCita = async (req, res) => {
       (fecha_cita === ahora.fecha && hora_cita <= ahora.hora)) {
     return res.status(400).json({ mensaje: 'Selecciona una fecha y hora futuras' });
   }
-  if (hora_cita < '09:00' || hora_cita > '17:00') {
-    return res.status(400).json({ mensaje: 'Selecciona un horario entre las 09:00 y las 17:00' });
+  if (hora_cita < '08:00' || hora_cita > '18:00') {
+    return res.status(400).json({ mensaje: 'Selecciona un horario entre las 08:00 y las 18:00' });
   }
 
   let client;
@@ -281,11 +281,11 @@ const crearCita = async (req, res) => {
 
   // HORARIO PROVISIONAL DE MANTENIMIENTO
   if (
-    hora_cita < '09:00' ||
-    hora_cita > '17:00'
+    hora_cita < '08:00' ||
+    hora_cita > '18:00'
   ) {
     return res.status(400).json({
-      mensaje: 'Selecciona un horario entre las 09:00 y las 17:00',
+      mensaje: 'Selecciona un horario entre las 08:00 y las 18:00',
     });
   }
 

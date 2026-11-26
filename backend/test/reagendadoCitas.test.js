@@ -91,13 +91,13 @@ const respuesta = () => ({
   status(code) { this.statusCode = code; return this; },
   json(body) { this.body = body; return this; },
 });
-const solicitud = (idInquilino = 1, idNotificacion = 20) => ({
+const solicitud = (idInquilino = 1, idNotificacion = 20, hora = '10:00') => ({
   usuario: { id_inquilino: idInquilino },
   params: { idCita: '6' },
   body: {
     id_notificacion: idNotificacion,
     fecha_cita: '2099-05-20',
-    hora_cita: '10:00',
+    hora_cita: hora,
   },
 });
 const reiniciar = () => {
@@ -222,4 +222,23 @@ test('rechaza fecha inválida, horario pasado y cita sin solicitud', async () =>
   await reagendarCita(solicitud(), sinSolicitud);
   assert.equal(sinSolicitud.statusCode, 409);
   assert.equal(actualizaciones, 0);
+});
+
+test('reagendamiento admite 08:00 y 18:00 y rechaza horarios fuera del rango', async () => {
+  for (const hora of ['08:00', '18:00']) {
+    reiniciar();
+    const res = respuesta();
+    await reagendarCita(solicitud(1, 20, hora), res);
+    assert.equal(res.statusCode, 200);
+    assert.equal(cita.hora_cita, hora);
+    assert.equal(actualizaciones, 1);
+    assert.equal(notificaciones.length, 1);
+  }
+  for (const hora of ['07:30', '18:30']) {
+    reiniciar();
+    const res = respuesta();
+    await reagendarCita(solicitud(1, 20, hora), res);
+    assert.equal(res.statusCode, 400);
+    assert.equal(actualizaciones, 0);
+  }
 });

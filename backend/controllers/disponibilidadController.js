@@ -9,7 +9,7 @@ const fechaValida = (valor) => {
 };
 const horaValida = (hora) => typeof hora === 'string' &&
   /^([01]\d|2[0-3]):[0-5]\d$/.test(hora) &&
-  hora >= '09:00' && hora <= '17:00';
+  hora >= '08:00' && hora <= '18:00';
 
 const consultarDisponibilidad = async (req, res) => {
   const fecha = req.query.fecha;
